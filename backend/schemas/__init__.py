@@ -84,10 +84,14 @@ class CodeFileRead(BaseModel):
     updated_at: datetime | None = None
 
 
-class FirmwareResult(BaseModel):
+class GeneratedFile(BaseModel):
     path: str
     language: str
     content: str
+
+
+class FirmwareResult(BaseModel):
+    files: list[GeneratedFile]
     summary: str
     warnings: list[str] = Field(default_factory=list)
 

@@ -73,8 +73,75 @@ export interface RagDocument {
 }
 
 
-// Pin configuration data
-const initialPins: PinConfig[] = [];
+const initialPins: PinConfig[] = [
+  // TOP (pins 1-16, left to right)
+  { pin: "PC13", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC14", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC15", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PH0",  signal: "RCC_OSC_IN",   label: "OSC_IN", mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF0", enabled: true  },
+  { pin: "PH1",  signal: "RCC_OSC_OUT",  label: "OSC_OUT",mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF0", enabled: true  },
+  { pin: "NRST", signal: "NRST",         label: "RESET",  mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "PC0",  signal: "Unassigned",   label: "",       mode: "Analog Mode",       pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC1",  signal: "Unassigned",   label: "",       mode: "Analog Mode",       pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC2",  signal: "Unassigned",   label: "",       mode: "Analog Mode",       pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC3",  signal: "Unassigned",   label: "",       mode: "Analog Mode",       pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "VSSA", signal: "PWR",          label: "VSS",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "VDDA", signal: "PWR",          label: "VDD",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "PA0",  signal: "Unassigned",   label: "",       mode: "Analog Mode",       pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PA1",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PA2",  signal: "USART2_TX",    label: "TX",     mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF7", enabled: true  },
+  { pin: "PA3",  signal: "USART2_RX",    label: "RX",     mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF7", enabled: true  },
+  // LEFT (pins 17-32, bottom to top)
+  { pin: "VSS1", signal: "PWR",          label: "VSS",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "VDD1", signal: "PWR",          label: "VDD",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "PA4",  signal: "Unassigned",   label: "",       mode: "Analog Mode",       pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PA5",  signal: "GPIO_Output",  label: "LED",    mode: "Output",            pull: "No pull-up/down", speed: "High", af: "-",   enabled: true  },
+  { pin: "PA6",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PA7",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC4",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC5",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB0",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB1",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB2",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB10", signal: "I2C2_SCL",     label: "SCL2",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF4", enabled: true  },
+  { pin: "PB11", signal: "I2C2_SDA",     label: "SDA2",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF4", enabled: true  },
+  { pin: "VSS2", signal: "PWR",          label: "VSS",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "VDD2", signal: "PWR",          label: "VDD",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "PB12", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  // RIGHT (pins 33-48, top to bottom)
+  { pin: "PB13", signal: "SPI2_SCK",     label: "SCK",    mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF5", enabled: true  },
+  { pin: "PB14", signal: "SPI2_MISO",    label: "MISO",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF5", enabled: true  },
+  { pin: "PB15", signal: "SPI2_MOSI",    label: "MOSI",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF5", enabled: true  },
+  { pin: "PC6",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC7",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC8",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC9",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PA8",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PA9",  signal: "USART1_TX",    label: "TX1",    mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF7", enabled: true  },
+  { pin: "PA10", signal: "USART1_RX",    label: "RX1",    mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF7", enabled: true  },
+  { pin: "PA11", signal: "USB_DM",       label: "USB-",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF10",enabled: true  },
+  { pin: "PA12", signal: "USB_DP",       label: "USB+",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF10",enabled: true  },
+  { pin: "PA13", signal: "SYS_JTMS",     label: "SWDIO",  mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF0", enabled: true  },
+  { pin: "VSS3", signal: "PWR",          label: "VSS",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "VDD3", signal: "PWR",          label: "VDD",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  // BOTTOM (pins 49-64, right to left)
+  { pin: "PA14", signal: "SYS_JTCK",     label: "SWCLK",  mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF0", enabled: true  },
+  { pin: "PA15", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC10", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC11", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PC12", signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PD2",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB3",  signal: "SYS_JTDO",     label: "SWO",    mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF0", enabled: true  },
+  { pin: "PB4",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB5",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB6",  signal: "I2C1_SCL",     label: "SCL1",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF4", enabled: true  },
+  { pin: "PB7",  signal: "I2C1_SDA",     label: "SDA1",   mode: "Alternate Function",pull: "No pull-up/down", speed: "High", af: "AF4", enabled: true  },
+  { pin: "BOOT0",signal: "BOOT0",        label: "BOOT",   mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "PB8",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "PB9",  signal: "Unassigned",   label: "",       mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: false },
+  { pin: "VSS4", signal: "PWR",          label: "VSS",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+  { pin: "VDD4", signal: "PWR",          label: "VDD",    mode: "Input Floating",    pull: "No pull-up/down", speed: "Low",  af: "-",   enabled: true  },
+];
 
 // RAG Documents initial mock list
 const initialRagDocs: RagDocument[] = [];

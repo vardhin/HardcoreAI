@@ -15,7 +15,7 @@
     Activity,
     FileCode,
     AlertTriangle,
-    CheckCircle
+    CheckCircle,
   } from "lucide-svelte";
 
   export let selectedBoard: string;
@@ -24,11 +24,12 @@
   export let onDetach: () => void;
 
   const TABS = ["Pinout", "Clock", "Configuration", "Project"] as const;
-  let activeTab: "Pinout" | "Clock" | "Configuration" | "Project" = "Configuration";
+  let activeTab: "Pinout" | "Clock" | "Configuration" | "Project" =
+    "Configuration";
   let expandedCategories = new Set<string>(["system-core"]);
   let selectedPeripheral = "gpio";
   let searchQuery = "";
-  
+
   // Interactive Pin Configuration State
   let editingPin: PinConfig | null = null;
   let pinLabel = "";
@@ -39,10 +40,41 @@
   let pinAf = "";
   let pinEnabled = false;
 
-  const BOARD_SPECS: Record<string, { flash: string; ram: string; speed: string; core: string; pins: number; package: string }> = {
-    "STM32F401": { flash: "512 KB", ram: "96 KB", speed: "84 MHz", core: "Cortex-M4", pins: 64, package: "LQFP64" },
-    "ESP32-S3":  { flash: "16 MB", ram: "512 KB", speed: "240 MHz", core: "Xtensa LX7 (Dual)", pins: 45, package: "QFN56" },
-    "RP2040":    { flash: "2 MB", ram: "264 KB", speed: "133 MHz", core: "Cortex-M0+ (Dual)", pins: 40, package: "QFN56" },
+  const BOARD_SPECS: Record<
+    string,
+    {
+      flash: string;
+      ram: string;
+      speed: string;
+      core: string;
+      pins: number;
+      package: string;
+    }
+  > = {
+    STM32F401: {
+      flash: "512 KB",
+      ram: "96 KB",
+      speed: "84 MHz",
+      core: "Cortex-M4",
+      pins: 64,
+      package: "LQFP64",
+    },
+    "ESP32-S3": {
+      flash: "16 MB",
+      ram: "512 KB",
+      speed: "240 MHz",
+      core: "Xtensa LX7 (Dual)",
+      pins: 45,
+      package: "QFN56",
+    },
+    RP2040: {
+      flash: "2 MB",
+      ram: "264 KB",
+      speed: "133 MHz",
+      core: "Cortex-M0+ (Dual)",
+      pins: 40,
+      package: "QFN56",
+    },
   };
 
   const CATEGORIES = [
@@ -53,7 +85,11 @@
       children: [
         { id: "rcc", label: "RCC", description: "Reset and Clock Control" },
         { id: "gpio", label: "GPIO", description: "General Purpose I/O" },
-        { id: "nvic", label: "NVIC", description: "Nested Vectored Interrupt Controller" },
+        {
+          id: "nvic",
+          label: "NVIC",
+          description: "Nested Vectored Interrupt Controller",
+        },
         { id: "sys", label: "SYS", description: "System Configuration" },
         { id: "dma", label: "DMA", description: "Direct Memory Access" },
       ],
@@ -63,8 +99,16 @@
       label: "Analog",
       icon: Activity,
       children: [
-        { id: "adc1", label: "ADC1", description: "Analog-to-Digital Converter 1" },
-        { id: "adc2", label: "ADC2", description: "Analog-to-Digital Converter 2" },
+        {
+          id: "adc1",
+          label: "ADC1",
+          description: "Analog-to-Digital Converter 1",
+        },
+        {
+          id: "adc2",
+          label: "ADC2",
+          description: "Analog-to-Digital Converter 2",
+        },
         { id: "dac", label: "DAC", description: "Digital-to-Analog Converter" },
         { id: "comp", label: "COMP", description: "Analog Comparator" },
       ],
@@ -74,13 +118,21 @@
       label: "Timers",
       icon: Clock,
       children: [
-        { id: "tim1", label: "TIM1", description: "Advanced Timer 1 (PWM, Encoder)" },
+        {
+          id: "tim1",
+          label: "TIM1",
+          description: "Advanced Timer 1 (PWM, Encoder)",
+        },
         { id: "tim2", label: "TIM2", description: "General Purpose Timer 2" },
         { id: "tim3", label: "TIM3", description: "General Purpose Timer 3" },
         { id: "tim4", label: "TIM4", description: "General Purpose Timer 4" },
         { id: "tim5", label: "TIM5", description: "General Purpose Timer 5" },
         { id: "tim9", label: "TIM9", description: "General Purpose Timer 9" },
-        { id: "systick", label: "SysTick", description: "System Tick Timer (HAL)" },
+        {
+          id: "systick",
+          label: "SysTick",
+          description: "System Tick Timer (HAL)",
+        },
       ],
     },
     {
@@ -88,15 +140,51 @@
       label: "Connectivity",
       icon: Wifi,
       children: [
-        { id: "usart1", label: "USART1", description: "Universal Sync/Async Receiver Transmitter 1" },
-        { id: "usart2", label: "USART2", description: "Universal Sync/Async Receiver Transmitter 2" },
-        { id: "usart6", label: "USART6", description: "Universal Sync/Async Receiver Transmitter 6" },
-        { id: "spi1", label: "SPI1", description: "Serial Peripheral Interface 1" },
-        { id: "spi2", label: "SPI2", description: "Serial Peripheral Interface 2" },
-        { id: "i2c1", label: "I2C1", description: "Inter-Integrated Circuit 1" },
-        { id: "i2c2", label: "I2C2", description: "Inter-Integrated Circuit 2" },
-        { id: "usb",  label: "USB OTG FS", description: "USB On-The-Go Full Speed" },
-        { id: "sdio", label: "SDIO", description: "Secure Digital I/O Interface" },
+        {
+          id: "usart1",
+          label: "USART1",
+          description: "Universal Sync/Async Receiver Transmitter 1",
+        },
+        {
+          id: "usart2",
+          label: "USART2",
+          description: "Universal Sync/Async Receiver Transmitter 2",
+        },
+        {
+          id: "usart6",
+          label: "USART6",
+          description: "Universal Sync/Async Receiver Transmitter 6",
+        },
+        {
+          id: "spi1",
+          label: "SPI1",
+          description: "Serial Peripheral Interface 1",
+        },
+        {
+          id: "spi2",
+          label: "SPI2",
+          description: "Serial Peripheral Interface 2",
+        },
+        {
+          id: "i2c1",
+          label: "I2C1",
+          description: "Inter-Integrated Circuit 1",
+        },
+        {
+          id: "i2c2",
+          label: "I2C2",
+          description: "Inter-Integrated Circuit 2",
+        },
+        {
+          id: "usb",
+          label: "USB OTG FS",
+          description: "USB On-The-Go Full Speed",
+        },
+        {
+          id: "sdio",
+          label: "SDIO",
+          description: "Secure Digital I/O Interface",
+        },
       ],
     },
     {
@@ -104,23 +192,100 @@
       label: "Middleware",
       icon: FileCode,
       children: [
-        { id: "freertos",  label: "FreeRTOS", description: "Real-Time Operating System" },
-        { id: "fatfs",    label: "FatFS",    description: "FAT File System" },
-        { id: "lwip",     label: "LwIP",     description: "Lightweight IP Stack" },
+        {
+          id: "freertos",
+          label: "FreeRTOS",
+          description: "Real-Time Operating System",
+        },
+        { id: "fatfs", label: "FatFS", description: "FAT File System" },
+        { id: "lwip", label: "LwIP", description: "Lightweight IP Stack" },
       ],
     },
   ];
 
   let peripheralConfigs: Record<string, any> = {
-    gpio:   { name: "GPIO",   enabled: true,  mode: "Output Push Pull", speed: "High", pullResistor: "No pull-up/down" },
-    usart1: { name: "USART1", enabled: false, mode: "Asynchronous", params: { BaudRate: "115200", WordLength: "8 Bits", StopBits: "1", Parity: "None" } },
-    usart2: { name: "USART2", enabled: true, mode: "Asynchronous", params: { BaudRate: "115200", WordLength: "8 Bits", StopBits: "1", Parity: "None" } },
-    spi1:   { name: "SPI1",   enabled: true, mode: "Full-Duplex Master", params: { Prescaler: "2", CPOL: "Low", CPHA: "1 Edge", DataSize: "8 Bits" } },
-    i2c1:   { name: "I2C1",   enabled: true, mode: "I2C", params: { SpeedMode: "Standard (100 kHz)", OwnAddress: "0x00", DualAddress: "Disabled" } },
-    tim1:   { name: "TIM1",   enabled: false, mode: "PWM Generation", params: { Prescaler: "83", CounterPeriod: "999", ClockDivision: "No Division" } },
-    tim2:   { name: "TIM2",   enabled: false, mode: "Up Counter", params: { Prescaler: "83", CounterPeriod: "999" } },
-    adc1:   { name: "ADC1",   enabled: false, mode: "Independent Mode", params: { Resolution: "12 bits", DataAlignment: "Right", Channels: "IN0" } },
-    rcc:    { name: "RCC",    enabled: true,  mode: "Crystal/Ceramic Resonator", params: { HSE: "8 MHz", LSE: "32.768 kHz", SYSCLK: "84 MHz" } },
+    gpio: {
+      name: "GPIO",
+      enabled: true,
+      mode: "Output Push Pull",
+      speed: "High",
+      pullResistor: "No pull-up/down",
+    },
+    usart1: {
+      name: "USART1",
+      enabled: false,
+      mode: "Asynchronous",
+      params: {
+        BaudRate: "115200",
+        WordLength: "8 Bits",
+        StopBits: "1",
+        Parity: "None",
+      },
+    },
+    usart2: {
+      name: "USART2",
+      enabled: true,
+      mode: "Asynchronous",
+      params: {
+        BaudRate: "115200",
+        WordLength: "8 Bits",
+        StopBits: "1",
+        Parity: "None",
+      },
+    },
+    spi1: {
+      name: "SPI1",
+      enabled: true,
+      mode: "Full-Duplex Master",
+      params: {
+        Prescaler: "2",
+        CPOL: "Low",
+        CPHA: "1 Edge",
+        DataSize: "8 Bits",
+      },
+    },
+    i2c1: {
+      name: "I2C1",
+      enabled: true,
+      mode: "I2C",
+      params: {
+        SpeedMode: "Standard (100 kHz)",
+        OwnAddress: "0x00",
+        DualAddress: "Disabled",
+      },
+    },
+    tim1: {
+      name: "TIM1",
+      enabled: false,
+      mode: "PWM Generation",
+      params: {
+        Prescaler: "83",
+        CounterPeriod: "999",
+        ClockDivision: "No Division",
+      },
+    },
+    tim2: {
+      name: "TIM2",
+      enabled: false,
+      mode: "Up Counter",
+      params: { Prescaler: "83", CounterPeriod: "999" },
+    },
+    adc1: {
+      name: "ADC1",
+      enabled: false,
+      mode: "Independent Mode",
+      params: {
+        Resolution: "12 bits",
+        DataAlignment: "Right",
+        Channels: "IN0",
+      },
+    },
+    rcc: {
+      name: "RCC",
+      enabled: true,
+      mode: "Crystal/Ceramic Resonator",
+      params: { HSE: "8 MHz", LSE: "32.768 kHz", SYSCLK: "84 MHz" },
+    },
   };
 
   $: specs = BOARD_SPECS[selectedBoard] ?? BOARD_SPECS["STM32F401"];
@@ -165,23 +330,26 @@
 
   function savePinConfig() {
     if (!editingPin) return;
-    
+
     // Auto alternate function detection
     let af = pinAf;
     if (pinMode === "Alternate Function" && !af) {
       af = "AF" + Math.floor(Math.random() * 4 + 4); // Simulate AF
     }
-    
+
     actions.updatePinConfig(editingPin.pin, {
       label: pinLabel,
       mode: pinMode,
       pull: pinPull,
       speed: pinSpeed,
-      signal: pinSignal === "Unassigned" && pinMode !== "Input Floating" ? editingPin.pin + "_PIN" : pinSignal,
+      signal:
+        pinSignal === "Unassigned" && pinMode !== "Input Floating"
+          ? editingPin.pin + "_PIN"
+          : pinSignal,
       af: pinMode === "Alternate Function" ? af : "-",
-      enabled: pinEnabled
+      enabled: pinEnabled,
     });
-    
+
     // Also toggle peripheral state based on pinout change
     if (pinSignal.startsWith("SPI1") && pinEnabled) {
       peripheralConfigs.spi1.enabled = true;
@@ -194,7 +362,9 @@
 
     const pinName = editingPin?.pin || "";
     editingPin = null;
-    actions.addEmulationLog(`Reconfigured microcontroller PIN: ${pinName} -> ${pinSignal} (${pinMode})`);
+    actions.addEmulationLog(
+      `Reconfigured microcontroller PIN: ${pinName} -> ${pinSignal} (${pinMode})`,
+    );
   }
 
   // Get color for pin state
@@ -206,15 +376,16 @@
     return "var(--accent-success-hover)";
   }
 
-  $: filteredCategories = CATEGORIES.map(cat => ({
+  $: filteredCategories = CATEGORIES.map((cat) => ({
     ...cat,
     children: searchQuery
-      ? cat.children.filter(c =>
-          c.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.description.toLowerCase().includes(searchQuery.toLowerCase())
+      ? cat.children.filter(
+          (c) =>
+            c.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            c.description.toLowerCase().includes(searchQuery.toLowerCase()),
         )
       : cat.children,
-  })).filter(cat => !searchQuery || cat.children.length > 0);
+  })).filter((cat) => !searchQuery || cat.children.length > 0);
 
   $: selectedConfig = peripheralConfigs[selectedPeripheral] ?? {
     name: selectedPeripheral.toUpperCase(),
@@ -235,7 +406,11 @@
       <span class="ec-board-chip">{selectedBoard}RETx</span>
     </div>
     <div class="ec-header-actions">
-      <button class="ec-icon-btn" onclick={onDetach} title={isDetached ? "Dock panel" : "Detach panel"}>
+      <button
+        class="ec-icon-btn"
+        onclick={onDetach}
+        title={isDetached ? "Dock panel" : "Detach panel"}
+      >
         {#if isDetached}
           <Zap size={12} />
         {:else}
@@ -256,7 +431,7 @@
     {#each TABS as tab}
       <button
         class="ec-tab {activeTab === tab ? 'ec-tab-active' : ''}"
-        onclick={() => activeTab = tab}
+        onclick={() => (activeTab = tab)}
       >
         {tab}
       </button>
@@ -267,84 +442,114 @@
   {#if activeTab === "Pinout"}
     <div class="ec-content ec-pinout-tab">
       <div class="ec-pinout-visual">
-        <!-- Interactive Chip Map -->
+        <!-- LQFP64-style chip with pins on all 4 sides -->
         <div class="ec-chip-wrapper">
-          <div class="ec-chip">
-            <div class="ec-chip-notch"></div>
-            
-            <!-- Top Pins (Simulated) -->
-            <div class="ec-chip-pins ec-pins-top">
-              {#each $workspaceStore.pins.slice(0, 4) as pin}
+          <div class="ec-chip-lqfp">
+            <!-- TOP PINS (16 pins, left to right = pins 1–16) -->
+            <div class="ec-lqfp-side ec-lqfp-top">
+              {#each $workspaceStore.pins.slice(0, 16) as pin}
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <div 
-                  class="ec-pin {pin.enabled ? 'active-pin' : ''}" 
-                  style="background-color: {getPinColor(pin)}"
+                <div
+                  class="ec-lqfp-pin ec-lqfp-pin-v {pin.enabled
+                    ? 'active-pin'
+                    : ''}"
+                  style="background: {getPinColor(pin)};"
                   onclick={() => openPinEditor(pin)}
-                  title="{pin.pin}: {pin.signal} ({pin.label})"
-                ></div>
-              {/each}
-            </div>
-            
-            <!-- Bottom Pins -->
-            <div class="ec-chip-pins ec-pins-bottom">
-              {#each $workspaceStore.pins.slice(4, 8) as pin}
-                <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <div 
-                  class="ec-pin {pin.enabled ? 'active-pin' : ''}" 
-                  style="background-color: {getPinColor(pin)}"
-                  onclick={() => openPinEditor(pin)}
-                  title="{pin.pin}: {pin.signal} ({pin.label})"
+                  title="{pin.pin}: {pin.signal}"
                 ></div>
               {/each}
             </div>
 
-            <!-- Left Pins -->
-            <div class="ec-chip-pins ec-pins-left">
-              {#each $workspaceStore.pins.slice(8, 10) as pin}
-                <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <div 
-                  class="ec-pin ec-pin-h {pin.enabled ? 'active-pin' : ''}" 
-                  style="background-color: {getPinColor(pin)}"
-                  onclick={() => openPinEditor(pin)}
-                  title="{pin.pin}: {pin.signal} ({pin.label})"
-                ></div>
-              {/each}
+            <!-- CHIP BODY ROW (left pins | body | right pins) -->
+            <div class="ec-lqfp-middle">
+              <!-- LEFT PINS (16 pins, bottom to top = pins 17–32) -->
+              <div class="ec-lqfp-side ec-lqfp-left">
+                {#each $workspaceStore.pins.slice(16, 32).reverse() as pin}
+                  <!-- svelte-ignore a11y-click-events-have-key-events -->
+                  <!-- svelte-ignore a11y-no-static-element-interactions -->
+                  <div
+                    class="ec-lqfp-pin ec-lqfp-pin-h {pin.enabled
+                      ? 'active-pin'
+                      : ''}"
+                    style="background: {getPinColor(pin)};"
+                    onclick={() => openPinEditor(pin)}
+                    title="{pin.pin}: {pin.signal}"
+                  ></div>
+                {/each}
+              </div>
+
+              <!-- IC BODY -->
+              <div class="ec-lqfp-body">
+                <div class="ec-lqfp-notch"></div>
+                <div class="ec-lqfp-brand">ST</div>
+                <div class="ec-lqfp-model">{selectedBoard}RETx</div>
+                <div class="ec-lqfp-pkg">{specs.package}</div>
+              </div>
+
+              <!-- RIGHT PINS (16 pins, top to bottom = pins 33–48) -->
+              <div class="ec-lqfp-side ec-lqfp-right">
+                {#each $workspaceStore.pins.slice(32, 48) as pin}
+                  <!-- svelte-ignore a11y-click-events-have-key-events -->
+                  <!-- svelte-ignore a11y-no-static-element-interactions -->
+                  <div
+                    class="ec-lqfp-pin ec-lqfp-pin-h {pin.enabled
+                      ? 'active-pin'
+                      : ''}"
+                    style="background: {getPinColor(pin)};"
+                    onclick={() => openPinEditor(pin)}
+                    title="{pin.pin}: {pin.signal}"
+                  ></div>
+                {/each}
+              </div>
             </div>
 
-            <!-- Right Pins -->
-            <div class="ec-chip-pins ec-pins-right">
-              {#each $workspaceStore.pins.slice(10, 12) as pin}
+            <!-- BOTTOM PINS (16 pins, right to left = pins 49–64) -->
+            <div class="ec-lqfp-side ec-lqfp-bottom">
+              {#each $workspaceStore.pins.slice(48, 64).reverse() as pin}
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <div 
-                  class="ec-pin ec-pin-h {pin.enabled ? 'active-pin' : ''}" 
-                  style="background-color: {getPinColor(pin)}"
+                <div
+                  class="ec-lqfp-pin ec-lqfp-pin-v {pin.enabled
+                    ? 'active-pin'
+                    : ''}"
+                  style="background: {getPinColor(pin)};"
                   onclick={() => openPinEditor(pin)}
-                  title="{pin.pin}: {pin.signal} ({pin.label})"
+                  title="{pin.pin}: {pin.signal}"
                 ></div>
               {/each}
-            </div>
-
-            <div class="ec-chip-body">
-              <div class="ec-brand">ST</div>
-              <div class="ec-model">{selectedBoard}RETx</div>
-              <div class="ec-package">{specs.package}</div>
             </div>
           </div>
         </div>
 
+        <!-- Legend + hint -->
         <div class="ec-pinout-legend">
-          <div class="ec-legend-item"><span class="ec-legend-dot" style="background: var(--accent-violet);"></span>Alternate</div>
-          <div class="ec-legend-item"><span class="ec-legend-dot" style="background: var(--accent-cyan);"></span>Analog</div>
-          <div class="ec-legend-item"><span class="ec-legend-dot" style="background: var(--accent-success);"></span>Output</div>
-          <div class="ec-legend-item"><span class="ec-legend-dot" style="background: var(--text-dark);"></span>Inactive</div>
+          <div class="ec-legend-item">
+            <span
+              class="ec-legend-dot"
+              style="background: var(--accent-violet);"
+            ></span>Alternate
+          </div>
+          <div class="ec-legend-item">
+            <span class="ec-legend-dot" style="background: var(--accent-cyan);"
+            ></span>Analog
+          </div>
+          <div class="ec-legend-item">
+            <span
+              class="ec-legend-dot"
+              style="background: var(--accent-success);"
+            ></span>Output
+          </div>
+          <div class="ec-legend-item">
+            <span class="ec-legend-dot" style="background: var(--text-dark);"
+            ></span>Inactive
+          </div>
         </div>
-
-        <p class="ec-hint-txt" style="text-align: center; margin-top: 8px; font-size: 0.7rem; color: var(--text-muted);">
-          💡 Click on any metal pin on the microchip block above to configure its configuration parameters directly!
+        <p
+          style="text-align:center; margin-top:6px; font-size:0.68rem; color:var(--text-muted); padding: 0 8px;"
+        >
+          💡 Click on any metal pin on the microchip block above to configure
+          its parameters directly!
         </p>
       </div>
 
@@ -360,13 +565,18 @@
         {#each $workspaceStore.pins as row}
           <!-- svelte-ignore a11y-click-events-have-key-events -->
           <!-- svelte-ignore a11y-no-static-element-interactions -->
-          <div 
-            class="ec-pin-row {row.enabled ? 'assigned' : 'unassigned'}" 
+          <div
+            class="ec-pin-row {row.enabled ? 'assigned' : 'unassigned'}"
             onclick={() => openPinEditor(row)}
             title="Edit configuration for {row.pin}"
             style="cursor: pointer;"
           >
-            <span class="ec-pin-id" style="border-left: 3px solid {getPinColor(row)}; padding-left: 6px;">{row.pin}</span>
+            <span
+              class="ec-pin-id"
+              style="border-left: 3px solid {getPinColor(
+                row,
+              )}; padding-left: 6px;">{row.pin}</span
+            >
             <span class="ec-pin-signal">{row.signal}</span>
             <span class="ec-pin-mode">{row.mode}</span>
             <span class="ec-pin-af">{row.af}</span>
@@ -381,14 +591,7 @@
     <div class="ec-content ec-clock-tab">
       <div class="ec-section-title">Clock Tree Configuration</div>
       <div class="ec-clock-tree">
-        {#each [
-          { src: "HSE (8 MHz)", arrow: "→", node: "PLL M=8, N=336, P=2", result: "168 MHz" },
-          { src: "PLL Output", arrow: "→", node: "AHB Prescaler /2", result: "SYSCLK 84 MHz" },
-          { src: "SYSCLK",    arrow: "→", node: "APB1 Prescaler /2", result: "APB1 42 MHz" },
-          { src: "SYSCLK",    arrow: "→", node: "APB2 Prescaler /1", result: "APB2 84 MHz" },
-          { src: "APB1",      arrow: "→", node: "Timer × 2",         result: "TIM CLK 84 MHz" },
-          { src: "LSI",       arrow: "→", node: "IWDG Clock",         result: "32 kHz" },
-        ] as row}
+        {#each [{ src: "HSE (8 MHz)", arrow: "→", node: "PLL M=8, N=336, P=2", result: "168 MHz" }, { src: "PLL Output", arrow: "→", node: "AHB Prescaler /2", result: "SYSCLK 84 MHz" }, { src: "SYSCLK", arrow: "→", node: "APB1 Prescaler /2", result: "APB1 42 MHz" }, { src: "SYSCLK", arrow: "→", node: "APB2 Prescaler /1", result: "APB2 84 MHz" }, { src: "APB1", arrow: "→", node: "Timer × 2", result: "TIM CLK 84 MHz" }, { src: "LSI", arrow: "→", node: "IWDG Clock", result: "32 kHz" }] as row}
           <div class="ec-clock-row">
             <span class="ec-clock-src">{row.src}</span>
             <span class="ec-clock-arrow">{row.arrow}</span>
@@ -398,16 +601,19 @@
         {/each}
       </div>
 
-      <div class="ec-section-title" style="margin-top: 16px;">Clock Source Frequencies</div>
-      {#each [
-        { label: "HSE Resonator",  value: "8 MHz" },
-        { label: "Internal HSI Clock",   value: "16 MHz" },
-        { label: "System Clock Speed",   value: specs.speed },
-        { label: "USB Clock Source",      value: "48 MHz (PLL Q=7)" },
-      ] as row}
+      <div class="ec-section-title" style="margin-top: 16px;">
+        Clock Source Frequencies
+      </div>
+      {#each [{ label: "HSE Resonator", value: "8 MHz" }, { label: "Internal HSI Clock", value: "16 MHz" }, { label: "System Clock Speed", value: specs.speed }, { label: "USB Clock Source", value: "48 MHz (PLL Q=7)" }] as row}
         <div class="ec-param-row">
-          <label class="ec-param-label" for={makeFieldId(row.label)}>{row.label}</label>
-          <input id={makeFieldId(row.label)} class="ec-param-input" value={row.value} />
+          <label class="ec-param-label" for={makeFieldId(row.label)}
+            >{row.label}</label
+          >
+          <input
+            id={makeFieldId(row.label)}
+            class="ec-param-input"
+            value={row.value}
+          />
         </div>
       {/each}
     </div>
@@ -427,7 +633,7 @@
             class="ec-search-input"
           />
           {#if searchQuery}
-            <button class="ec-search-clear" onclick={() => searchQuery = ""}>
+            <button class="ec-search-clear" onclick={() => (searchQuery = "")}>
               <X size={10} />
             </button>
           {/if}
@@ -436,8 +642,13 @@
         <div class="ec-cat-list">
           {#each filteredCategories as cat}
             <div class="ec-cat-group">
-              <button class="ec-cat-header" onclick={() => toggleCategory(cat.id)}>
-                <span class="ec-cat-icon"><svelte:component this={cat.icon} size={13} /></span>
+              <button
+                class="ec-cat-header"
+                onclick={() => toggleCategory(cat.id)}
+              >
+                <span class="ec-cat-icon"
+                  ><svelte:component this={cat.icon} size={13} /></span
+                >
                 <span class="ec-cat-label">{cat.label}</span>
                 {#if expandedCategories.has(cat.id)}
                   <ChevronDown size={11} class="ec-cat-arrow" />
@@ -452,12 +663,16 @@
                     {@const cfg = peripheralConfigs[child.id]}
                     {@const isEnabled = cfg?.enabled ?? false}
                     <button
-                      class="ec-child-item {selectedPeripheral === child.id ? 'ec-child-active' : ''}"
-                      onclick={() => selectedPeripheral = child.id}
+                      class="ec-child-item {selectedPeripheral === child.id
+                        ? 'ec-child-active'
+                        : ''}"
+                      onclick={() => (selectedPeripheral = child.id)}
                     >
                       <span
                         class="ec-child-dot"
-                        style="background: {isEnabled ? 'var(--accent-success)' : 'var(--border-color)'}"
+                        style="background: {isEnabled
+                          ? 'var(--accent-success)'
+                          : 'var(--border-color)'}"
                       ></span>
                       <span class="ec-child-label">{child.label}</span>
                       {#if isEnabled}
@@ -480,16 +695,34 @@
             <div class="ec-chip">
               <div class="ec-chip-notch"></div>
               <div class="ec-chip-body">
-                <div class="ec-model" style="font-size: 8px;">{selectedBoard}</div>
+                <div class="ec-model" style="font-size: 8px;">
+                  {selectedBoard}
+                </div>
               </div>
             </div>
           </div>
-          
+
           <div class="ec-spec-grid">
-            <div class="ec-spec-item"><span class="ec-spec-lbl">Flash</span><span class="ec-spec-val">{specs.flash}</span></div>
-            <div class="ec-spec-item"><span class="ec-spec-lbl">RAM</span><span class="ec-spec-val">{specs.ram}</span></div>
-            <div class="ec-spec-item"><span class="ec-spec-lbl">Speed</span><span class="ec-spec-val">{specs.speed}</span></div>
-            <div class="ec-spec-item"><span class="ec-spec-lbl">Core</span><span class="ec-spec-val">{specs.core}</span></div>
+            <div class="ec-spec-item">
+              <span class="ec-spec-lbl">Flash</span><span class="ec-spec-val"
+                >{specs.flash}</span
+              >
+            </div>
+            <div class="ec-spec-item">
+              <span class="ec-spec-lbl">RAM</span><span class="ec-spec-val"
+                >{specs.ram}</span
+              >
+            </div>
+            <div class="ec-spec-item">
+              <span class="ec-spec-lbl">Speed</span><span class="ec-spec-val"
+                >{specs.speed}</span
+              >
+            </div>
+            <div class="ec-spec-item">
+              <span class="ec-spec-lbl">Core</span><span class="ec-spec-val"
+                >{specs.core}</span
+              >
+            </div>
           </div>
         </div>
 
@@ -504,9 +737,14 @@
               {/if}
               <span>{selectedConfig.name} Configuration</span>
             </div>
-            
+
             <!-- svelte-ignore a11y-label-has-associated-control -->
-            <label class="ec-toggle-switch" title={selectedConfig.enabled ? "Disable Peripheral" : "Enable Peripheral"}>
+            <label
+              class="ec-toggle-switch"
+              title={selectedConfig.enabled
+                ? "Disable Peripheral"
+                : "Enable Peripheral"}
+            >
               <input
                 type="checkbox"
                 checked={selectedConfig.enabled}
@@ -522,26 +760,44 @@
           {#if selectedConfig.enabled}
             <div class="ec-detail-body">
               <div class="ec-param-row">
-                <label class="ec-param-label" for={makeFieldId("Operating Mode")}>Operating Mode</label>
+                <label
+                  class="ec-param-label"
+                  for={makeFieldId("Operating Mode")}>Operating Mode</label
+                >
                 <select
                   id={makeFieldId("Operating Mode")}
                   class="ec-param-select"
                   value={selectedConfig.mode ?? ""}
-                  onchange={e => updateParam(selectedPeripheral, "mode", e.currentTarget.value)}
+                  onchange={(e) =>
+                    updateParam(
+                      selectedPeripheral,
+                      "mode",
+                      e.currentTarget.value,
+                    )}
                 >
-                  <option value={selectedConfig.mode ?? ""}>{selectedConfig.mode ?? "Default Mode"}</option>
+                  <option value={selectedConfig.mode ?? ""}
+                    >{selectedConfig.mode ?? "Default Mode"}</option
+                  >
                   <option value="Disabled">Disabled</option>
                 </select>
               </div>
 
               {#if selectedConfig.speed}
                 <div class="ec-param-row">
-                  <label class="ec-param-label" for={makeFieldId("GPIO Pin Speed")}>GPIO Pin Speed</label>
+                  <label
+                    class="ec-param-label"
+                    for={makeFieldId("GPIO Pin Speed")}>GPIO Pin Speed</label
+                  >
                   <select
                     id={makeFieldId("GPIO Pin Speed")}
                     class="ec-param-select"
                     value={selectedConfig.speed}
-                    onchange={e => updateParam(selectedPeripheral, "speed", e.currentTarget.value)}
+                    onchange={(e) =>
+                      updateParam(
+                        selectedPeripheral,
+                        "speed",
+                        e.currentTarget.value,
+                      )}
                   >
                     {#each ["Low", "Medium", "High", "Very High"] as s}
                       <option value={s}>{s}</option>
@@ -552,12 +808,21 @@
 
               {#if selectedConfig.pullResistor}
                 <div class="ec-param-row">
-                  <label class="ec-param-label" for={makeFieldId("Internal Resistor")}>Internal Resistor</label>
+                  <label
+                    class="ec-param-label"
+                    for={makeFieldId("Internal Resistor")}
+                    >Internal Resistor</label
+                  >
                   <select
                     id={makeFieldId("Internal Resistor")}
                     class="ec-param-select"
                     value={selectedConfig.pullResistor}
-                    onchange={e => updateParam(selectedPeripheral, "pullResistor", e.currentTarget.value)}
+                    onchange={(e) =>
+                      updateParam(
+                        selectedPeripheral,
+                        "pullResistor",
+                        e.currentTarget.value,
+                      )}
                   >
                     {#each ["No pull-up/down", "Pull-up", "Pull-down"] as p}
                       <option value={p}>{p}</option>
@@ -569,12 +834,19 @@
               {#if selectedConfig.params}
                 {#each Object.entries(selectedConfig.params) as [key, val]}
                   <div class="ec-param-row">
-                    <label class="ec-param-label" for={makeFieldId(key)}>{key}</label>
+                    <label class="ec-param-label" for={makeFieldId(key)}
+                      >{key}</label
+                    >
                     <input
                       id={makeFieldId(key)}
                       class="ec-param-input"
                       value={val}
-                      onchange={e => updateParam(selectedPeripheral, key, e.currentTarget.value)}
+                      onchange={(e) =>
+                        updateParam(
+                          selectedPeripheral,
+                          key,
+                          e.currentTarget.value,
+                        )}
                     />
                   </div>
                 {/each}
@@ -586,7 +858,8 @@
             </div>
           {:else}
             <div class="ec-disabled-msg">
-              The {selectedConfig.name} channel is disabled. Toggle the switch in the header to activate and map this channel.
+              The {selectedConfig.name} channel is disabled. Toggle the switch in
+              the header to activate and map this channel.
             </div>
           {/if}
         </div>
@@ -598,21 +871,22 @@
   {#if activeTab === "Project"}
     <div class="ec-content ec-project-tab">
       <div class="ec-section-title">Project Directives</div>
-      {#each [
-        { label: "Firmware Project Name", value: "blinky-stm32f4" },
-        { label: "Target Toolchain compiler", value: "arm-none-eabi-gcc" },
-        { label: "Microcontroller Linker File", value: "STM32F401RETX_FLASH.ld" },
-        { label: "Processor Heap Limit", value: "0x200" },
-        { label: "Processor Stack Limit", value: "0x400" },
-        { label: "STM32Cube HAL Version", value: "STM32CubeF4 v1.27.1" },
-      ] as row}
+      {#each [{ label: "Firmware Project Name", value: "blinky-stm32f4" }, { label: "Target Toolchain compiler", value: "arm-none-eabi-gcc" }, { label: "Microcontroller Linker File", value: "STM32F401RETX_FLASH.ld" }, { label: "Processor Heap Limit", value: "0x200" }, { label: "Processor Stack Limit", value: "0x400" }, { label: "STM32Cube HAL Version", value: "STM32CubeF4 v1.27.1" }] as row}
         <div class="ec-param-row">
-          <label class="ec-param-label" for={makeFieldId(row.label)}>{row.label}</label>
-          <input id={makeFieldId(row.label)} class="ec-param-input" value={row.value} />
+          <label class="ec-param-label" for={makeFieldId(row.label)}
+            >{row.label}</label
+          >
+          <input
+            id={makeFieldId(row.label)}
+            class="ec-param-input"
+            value={row.value}
+          />
         </div>
       {/each}
 
-      <div class="ec-section-title" style="margin-top: 16px;">Core Generated Source Layout</div>
+      <div class="ec-section-title" style="margin-top: 16px;">
+        Core Generated Source Layout
+      </div>
       {#each ["Core/Src/main.c", "Core/Inc/main.h", "Core/Src/stm32f4xx_it.c", "Makefile"] as f}
         <div class="ec-file-row">
           <FileCode size={12} style="color: var(--accent-violet-hover);" />
@@ -632,14 +906,17 @@
 {#if editingPin}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="ec-pin-modal-backdrop" onclick={() => editingPin = null}>
+  <div class="ec-pin-modal-backdrop" onclick={() => (editingPin = null)}>
     <div class="ec-pin-modal" onclick={(e) => e.stopPropagation()}>
       <div class="ec-pin-modal-header">
         <div class="title-with-pin">
-          <span class="modal-pin-dot" style="background: {getPinColor(editingPin)}"></span>
+          <span
+            class="modal-pin-dot"
+            style="background: {getPinColor(editingPin)}"
+          ></span>
           <h3>Configure Pin {editingPin.pin}</h3>
         </div>
-        <button class="close-modal-btn" onclick={() => editingPin = null}>
+        <button class="close-modal-btn" onclick={() => (editingPin = null)}>
           <X size={14} />
         </button>
       </div>
@@ -649,9 +926,15 @@
           <!-- svelte-ignore a11y-label-has-associated-control -->
           <label>Enable Pin Connection</label>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="checkbox" bind:checked={pinEnabled} id="pin-enabled-chk" />
+            <input
+              type="checkbox"
+              bind:checked={pinEnabled}
+              id="pin-enabled-chk"
+            />
             <span style="font-size: 0.75rem; color: var(--text-muted);">
-              {pinEnabled ? "Active pin (allocates hardware resource)" : "Disabled pin (floating high impedance)"}
+              {pinEnabled
+                ? "Active pin (allocates hardware resource)"
+                : "Disabled pin (floating high impedance)"}
             </span>
           </div>
         </div>
@@ -660,7 +943,12 @@
           <div class="modal-param-group">
             <!-- svelte-ignore a11y-label-has-associated-control -->
             <label>Pin Custom Label</label>
-            <input type="text" class="modal-input" bind:value={pinLabel} placeholder="e.g. USER_LED" />
+            <input
+              type="text"
+              class="modal-input"
+              bind:value={pinLabel}
+              placeholder="e.g. USER_LED"
+            />
           </div>
 
           <div class="modal-param-group">
@@ -669,7 +957,9 @@
             <select class="modal-select" bind:value={pinMode}>
               <option value="Input Floating">Input Floating</option>
               <option value="Output Push Pull">Output Push Pull</option>
-              <option value="Alternate Function">Alternate Function (SPI/USART/I2C)</option>
+              <option value="Alternate Function"
+                >Alternate Function (SPI/USART/I2C)</option
+              >
               <option value="Analog Mode">Analog Mode (ADC/DAC)</option>
             </select>
           </div>
@@ -747,8 +1037,12 @@
       </div>
 
       <div class="ec-pin-modal-footer">
-        <button class="cancel-btn" onclick={() => editingPin = null}>Cancel</button>
-        <button class="save-btn" onclick={savePinConfig}>Apply Configuration</button>
+        <button class="cancel-btn" onclick={() => (editingPin = null)}
+          >Cancel</button
+        >
+        <button class="save-btn" onclick={savePinConfig}
+          >Apply Configuration</button
+        >
       </div>
     </div>
   </div>
@@ -769,9 +1063,9 @@
     justify-content: center;
     z-index: 9999;
   }
-  
+
   .ec-pin-modal {
-    background: #0E0E14;
+    background: #0e0e14;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     width: 380px;
@@ -780,7 +1074,7 @@
     display: flex;
     flex-direction: column;
   }
-  
+
   .ec-pin-modal-header {
     display: flex;
     align-items: center;
@@ -794,14 +1088,14 @@
     align-items: center;
     gap: 8px;
   }
-  
+
   .modal-pin-dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     box-shadow: 0 0 6px rgba(139, 92, 246, 0.4);
   }
-  
+
   .ec-pin-modal-header h3 {
     margin: 0;
     font-size: 0.9rem;
@@ -809,7 +1103,7 @@
     color: var(--text-bright);
     font-weight: 600;
   }
-  
+
   .close-modal-btn {
     background: none;
     border: none;
@@ -817,11 +1111,11 @@
     cursor: pointer;
     padding: 2px;
   }
-  
+
   .close-modal-btn:hover {
     color: var(--text-bright);
   }
-  
+
   .ec-pin-modal-body {
     padding: 16px;
     display: flex;
@@ -830,13 +1124,13 @@
     max-height: 60vh;
     overflow-y: auto;
   }
-  
+
   .modal-param-group {
     display: flex;
     flex-direction: column;
     gap: 5px;
   }
-  
+
   .modal-param-group label {
     font-size: 0.7rem;
     color: var(--text-muted);
@@ -844,9 +1138,10 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  
-  .modal-input, .modal-select {
-    background: #14141E;
+
+  .modal-input,
+  .modal-select {
+    background: #14141e;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     color: var(--text-bright);
@@ -856,11 +1151,12 @@
     width: 100%;
     outline: none;
   }
-  
-  .modal-input:focus, .modal-select:focus {
+
+  .modal-input:focus,
+  .modal-select:focus {
     border-color: var(--accent-violet);
   }
-  
+
   .ec-pin-modal-footer {
     display: flex;
     align-items: center;
@@ -868,11 +1164,11 @@
     gap: 10px;
     padding: 12px 16px;
     border-top: 1px solid var(--border-color);
-    background: #0B0B0F;
+    background: #0b0b0f;
     border-bottom-left-radius: var(--radius-md);
     border-bottom-right-radius: var(--radius-md);
   }
-  
+
   .cancel-btn {
     background: none;
     border: 1px solid var(--border-color);
@@ -882,12 +1178,12 @@
     padding: 5px 12px;
     cursor: pointer;
   }
-  
+
   .cancel-btn:hover {
     color: var(--text-bright);
     background: #161622;
   }
-  
+
   .save-btn {
     background: var(--accent-violet);
     border: none;
@@ -898,7 +1194,7 @@
     cursor: pointer;
     font-weight: 500;
   }
-  
+
   .save-btn:hover {
     background: var(--accent-violet-hover);
   }
@@ -907,6 +1203,140 @@
   .active-pin {
     box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
     animation: pinGlow 2s infinite alternate;
+  }
+
+  /* ── LQFP64 Chip Layout ── */
+  .ec-chip-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 12px 8px 4px;
+  }
+
+  .ec-chip-lqfp {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .ec-lqfp-middle {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  /* Sides */
+  .ec-lqfp-side {
+    display: flex;
+    gap: 2px;
+  }
+
+  .ec-lqfp-top,
+  .ec-lqfp-bottom {
+    flex-direction: row;
+    padding: 0 4px;
+    margin: 0;
+    height: 8px;
+    align-items: flex-end;
+  }
+
+  .ec-lqfp-top {
+    margin-bottom: 0;
+  }
+  .ec-lqfp-bottom {
+    margin-top: 0;
+    align-items: flex-start;
+  }
+
+  .ec-lqfp-left,
+  .ec-lqfp-right {
+    flex-direction: column;
+    width: 8px;
+    align-items: flex-end;
+  }
+
+  .ec-lqfp-left {
+    align-items: flex-end;
+  }
+  .ec-lqfp-right {
+    align-items: flex-start;
+  }
+
+  /* Individual pins */
+  .ec-lqfp-pin {
+    border-radius: 1px;
+    cursor: pointer;
+    transition:
+      filter 0.15s,
+      transform 0.1s;
+    flex-shrink: 0;
+  }
+
+  .ec-lqfp-pin:hover {
+    filter: brightness(1.6);
+    transform: scale(1.3);
+    z-index: 10;
+  }
+
+  .ec-lqfp-pin-v {
+    width: 5px;
+    height: 10px;
+  }
+
+  .ec-lqfp-pin-h {
+    width: 10px;
+    height: 5px;
+  }
+
+  /* IC body */
+  .ec-lqfp-body {
+    position: relative;
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(145deg, #1a1a28, #0e0e18);
+    border: 1.5px solid #2a2a40;
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    box-shadow:
+      inset 0 0 20px rgba(0, 0, 0, 0.5),
+      0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+
+  .ec-lqfp-notch {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #0a0a14;
+    border: 1px solid #2a2a40;
+  }
+
+  .ec-lqfp-brand {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: #c7d2fe;
+    letter-spacing: 0.05em;
+    font-family: var(--font-sans);
+  }
+
+  .ec-lqfp-model {
+    font-size: 0.48rem;
+    color: #94a3b8;
+    font-family: var(--font-mono);
+    text-align: center;
+    line-height: 1.3;
+  }
+
+  .ec-lqfp-pkg {
+    font-size: 0.45rem;
+    color: #64748b;
+    font-family: var(--font-mono);
   }
 
   @keyframes pinGlow {

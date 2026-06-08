@@ -116,14 +116,15 @@ input, button, select, textarea {
 
 /* Top Command Bar */
 .helix-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  height: 48px; /* Breathing room height matching Antigravity */
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  z-index: 10;
+    height: 56px;
+    background: #070812;
+    border-bottom: 1px solid #1d1d35;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    padding: 0 20px;
 }
 
 .logo-section {
@@ -254,11 +255,16 @@ input, button, select, textarea {
 
 /* Main Workspace Layout (Using display-flex for native resizing!) */
 .helix-main-workspace {
-  display: flex;
-  flex-direction: row;
+  display: grid;
+
+  grid-template-columns:
+    52px
+    280px
+    minmax(0, 1fr)
+    360px;
+
   flex: 1;
   overflow: hidden;
-  position: relative;
   background-color: var(--bg-primary);
 }
 
@@ -463,8 +469,9 @@ input, button, select, textarea {
   min-height: 0; /* Required so flex can shrink below content size */
   overflow: hidden;
   background-color: var(--bg-primary);
-  flex: 1; /* Automatically resizes between sidebars */
-  min-width: 200px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
   position: relative; /* Anchor for absolute resizer handles */
 }
 
@@ -655,15 +662,18 @@ input, button, select, textarea {
 }
 
 .embedded-configurator-pane {
-  flex: 42;
-  min-height: 220px;
+  height: 48%;
+  min-height: 260px;
+  overflow: hidden;
 }
 
 .ai-copilot-pane {
-  flex: 35;
-  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
-
 .debug-variables-pane {
   flex: 23;
   min-height: 120px;
@@ -1454,6 +1464,99 @@ input, button, select, textarea {
   gap: 10px;
   margin-left: 14px;
 }
+.vscode-action-btns {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .vscode-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 14px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: background 0.15s;
+    letter-spacing: 0.01em;
+  }
+
+  .vscode-action-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,0.07);
+  }
+
+  .vscode-action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .vscode-action-btn.build { color: #4ec9b0; }
+  .vscode-action-btn.flash { color: #dcdcaa; }
+  .vscode-action-btn.debug { color: #9cdcfe; }
+  .vscode-action-btn.debug.active { color: var(--accent-cyan); }
+
+  .header-icon-btn {
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    background: transparent;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .header-icon-btn:hover {
+    color: var(--text-bright);
+    background: rgba(255,255,255,0.06);
+  }
+
+  .header-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #6366f1;
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    margin-left: 2px;
+  }
+
+  .editor-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px 12px;
+    font-size: 0.7rem;
+    background: var(--bg-dark);
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    min-height: 22px;
+  }
+
+  .breadcrumb-seg {
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .breadcrumb-seg:hover { color: var(--text-bright); }
+  .breadcrumb-seg.active { color: var(--text-color); }
+
+  .breadcrumb-sep {
+    color: var(--text-dark);
+    margin: 0 1px;
+  }
 
 .control-icon-btn {
   color: var(--text-dark);
@@ -1468,6 +1571,64 @@ input, button, select, textarea {
 .close-btn-highlight:hover {
   color: var(--accent-error);
 }
+
+.vscode-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 22px;
+  background: #3b3d98;
+  padding: 0;
+  font-size: 0.67rem;
+  color: rgba(255,255,255,0.92);
+  flex-shrink: 0;
+  z-index: 200;
+  width: 100%;
+}
+
+.statusbar-left,
+.statusbar-right {
+  display: flex;
+  align-items: center;
+}
+
+.statusbar-item {
+  padding: 0 8px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.92);
+  font-size: 0.67rem;
+  cursor: default;
+  font-family: inherit;
+}
+
+.statusbar-git {
+  background: rgba(0,0,0,0.2);
+  gap: 5px;
+}
+
+.statusbar-clickable {
+  cursor: pointer;
+}
+
+.statusbar-clickable:hover {
+  background: rgba(255,255,255,0.15);
+}
+
+.statusbar-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.statusbar-dot.green  { background: #4ade80; }
+.statusbar-dot.amber  { background: #fbbf24; }
 
 /* Serial Monitor Custom Toolbar */
 .serial-monitor-toolbar {
@@ -2933,4 +3094,11 @@ body.dragging-col {
 .close-tab:hover {
   color: var(--text-active);
   background-color: rgba(255, 255, 255, 0.15);
+}
+
+
+.split-sidebar-right {
+    width: 320px;
+    min-width: 320px;
+    max-width: 320px;
 }
