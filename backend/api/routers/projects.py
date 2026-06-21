@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from uuid import UUID
-
+import os
 from fastapi import APIRouter, Depends
 from sqlmodel import select
 import threading
@@ -50,12 +50,18 @@ def list_projects(user_id: str = Depends(get_current_user_id)) -> list[ProjectOu
 
 @router.post("/api/projects", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, user_id: str = Depends(get_current_user_id)) -> ProjectOut:
+    project_name = payload.name.strip()
+    project_root = payload.path
+
+    if project_root:
+        project_root = os.path.join(project_root, project_name)
+        os.makedirs(project_root, exist_ok=True)
     with db_session(user_id) as session:
         project = ProjectRow(
             name=payload.name.strip(),
             description=payload.description.strip(),
             user_id=UUID(user_id),
-            path=payload.path,
+            path=project_root,
         )
         session.add(project)
         session.commit()
@@ -80,7 +86,6 @@ def create_project(payload: ProjectCreate, user_id: str = Depends(get_current_us
         git_mgr.sync_db_to_disk(files_dict)
 
         if project.path:
-            import os
             import subprocess
             for rel_path, _language, content in files:
                 full_path = os.path.join(project.path, rel_path)
@@ -107,6 +112,7 @@ def create_project(payload: ProjectCreate, user_id: str = Depends(get_current_us
         session.commit()
         session.refresh(project)
         return project_out(project)
+
 
 
 @router.get("/api/projects/{project_id}", response_model=ProjectOut)
