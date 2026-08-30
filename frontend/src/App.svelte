@@ -76,8 +76,6 @@
     try {
       const data = await api.getOnboarding();
       showOnboarding = !data.completed;
-      // The getting-started guide is the first thing shown after onboarding.
-      showReadme = Boolean(data.completed);
     } catch (error) {
       // A profile outage must never prevent an authenticated user from working.
       console.warn("Unable to check onboarding status", error);
@@ -94,6 +92,13 @@
 
   let showAdminPanel = false;
   let projectActionPending = false;
+  let newProjectName = "";
+  let newProjectDescription = "";
+  let newProjectBoardId = "";
+  let newProjectBoardSearch = "";
+  let newProjectBoardPickerOpen = false;
+  let boardTriggerEl: HTMLButtonElement | null = null;
+  let boardMenuStyle = "";
   let aiInput = "";
   let serialInput = "";
   let selectedPeripheral = "Core Registers";
@@ -103,6 +108,66 @@
     $workspaceStore.selectedBoardInfo?.label ||
     $workspaceStore.selectedBoard ||
     "Select a board";
+  $: if (!newProjectBoardId && $workspaceStore.selectedBoard) {
+    newProjectBoardId = $workspaceStore.selectedBoard;
+  }
+  $: newProjectBoard =
+    $workspaceStore.boardCatalog.find((board) => board.id === newProjectBoardId) ||
+    $workspaceStore.selectedBoardInfo ||
+    null;
+  $: newProjectBoardOptions = (() => {
+    const query = newProjectBoardSearch.trim().toLowerCase();
+    if (!query) return [];
+    return $workspaceStore.boardCatalog
+      .filter(
+        (board) =>
+          !query ||
+          board.label.toLowerCase().includes(query) ||
+          board.id.toLowerCase().includes(query) ||
+          (board.mcu || "").toLowerCase().includes(query) ||
+          (board.family || "").toLowerCase().includes(query),
+      )
+      .slice(0, 24);
+  })();
+
+  function chooseNewProjectBoard(boardId: string) {
+    newProjectBoardId = boardId;
+    newProjectBoardSearch = "";
+    newProjectBoardPickerOpen = false;
+  }
+
+  // The menu is fixed-positioned and placed via JS rather than plain CSS
+  // `position: absolute`, because the picker lives inside ancestors
+  // (.welcome-screen / .welcome-column) that set `overflow: hidden` for
+  // their own layout reasons — an absolutely positioned dropdown gets
+  // hard-clipped by that boundary instead of scrolling. Fixed positioning
+  // escapes the clip; we also flip it upward when there isn't room below.
+  async function toggleBoardMenu() {
+    newProjectBoardPickerOpen = !newProjectBoardPickerOpen;
+    if (newProjectBoardPickerOpen) {
+      await tick();
+      positionBoardMenu();
+    }
+  }
+
+  function positionBoardMenu() {
+    if (!boardTriggerEl) return;
+    const rect = boardTriggerEl.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const gap = 6;
+    const spaceBelow = viewportHeight - rect.bottom - gap - 12;
+    const spaceAbove = rect.top - gap - 12;
+    const openUpward = spaceBelow < 180 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(120, Math.min(360, openUpward ? spaceAbove : spaceBelow));
+    boardMenuStyle = [
+      `left:${rect.left}px`,
+      `width:${rect.width}px`,
+      `max-height:${maxHeight}px`,
+      openUpward
+        ? `bottom:${viewportHeight - rect.top + gap}px`
+        : `top:${rect.bottom + gap}px`,
+    ].join("; ");
+  }
 
   // Multi-board target picker: group the flat board catalog by family
   // (STM32F1, STM32H7, ...) so the dropdown stays usable now that it spans
@@ -616,6 +681,31 @@
     const message = error instanceof Error ? error.message : String(error);
     if (message.toLowerCase().includes("project limit")) showProjectLimitModal = true;
     actions.addBuildLog("Failed to create project: " + message);
+  }
+
+  async function startConfiguredProject() {
+    const name = newProjectName.trim() || "My Embedded Project";
+    const boardId = newProjectBoardId || $workspaceStore.selectedBoard || null;
+    try {
+      const project = await api.createProject(
+        name,
+        newProjectDescription.trim(),
+        null,
+        boardId,
+      );
+      await actions.loadProjects();
+      await actions.loadProject(project.id);
+      actions.setActiveSidebarTab("explorer");
+      actions.setShowWelcomeScreen(false);
+      workspaceView = "research";
+      newProjectName = "";
+      newProjectDescription = "";
+      actions.addBuildLog(
+        `Created project locally at ${project.path} and opened Research Mode.`,
+      );
+    } catch (error) {
+      handleProjectCreateError(error);
+    }
   }
 
   function handleMouseUp() {
@@ -1483,30 +1573,6 @@
     actions.setActiveFile(path);
   }
 
-  async function readDirRecursive(
-    dirHandle: any,
-    prefix = "",
-  ): Promise<{ path: string; content: string }[]> {
-    const out: { path: string; content: string }[] = [];
-    const SKIP = new Set([".git", "node_modules", ".pio", "__pycache__"]);
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (SKIP.has(name)) continue;
-      const path = prefix ? `${prefix}/${name}` : name;
-      if (handle.kind === "file") {
-        try {
-          const file = await handle.getFile();
-          const content = await file.text();
-          out.push({ path, content });
-        } catch {
-          // binary/unreadable file, skip
-        }
-      } else if (handle.kind === "directory") {
-        out.push(...(await readDirRecursive(handle, path)));
-      }
-    }
-    return out;
-  }
-
   async function handleOpenFolder() {
     await runProjectAction(async () => {
       try {
@@ -1534,6 +1600,9 @@
   onmousemove={handleMouseMove}
   onmouseup={handleMouseUp}
   onkeydown={handleKeyDown}
+  onresize={() => {
+    if (newProjectBoardPickerOpen) positionBoardMenu();
+  }}
   onclick={(e) => {
     const target = e.target as HTMLElement;
     if (showViewDropdown && !target.closest(".view-menu-container")) {
@@ -1541,6 +1610,12 @@
     }
     if (showAccountMenu && !target.closest(".account-menu-container")) {
       showAccountMenu = false;
+    }
+    if (
+      newProjectBoardPickerOpen &&
+      !target.closest(".project-board-picker")
+    ) {
+      newProjectBoardPickerOpen = false;
     }
   }}
 />
@@ -1587,8 +1662,8 @@
 
 {#if $authState.user && showOnboarding}
   <Onboarding
-    onComplete={() => { showOnboarding = false; showReadme = true; }}
-    onDismiss={() => { showOnboarding = false; showReadme = true; }}
+    onComplete={() => { showOnboarding = false; }}
+    onDismiss={() => { showOnboarding = false; }}
   />
 {/if}
 
@@ -1968,81 +2043,82 @@
                 <button
                   class="welcome-action-btn"
                   disabled={projectActionPending}
-                  onclick={() => runProjectAction(async () => {
-                    if ($workspaceStore.projectsList.length > 0) {
-                    await actions.loadProject(
-                      $workspaceStore.projectsList[0].id,
-                    );
-                    actions.setShowWelcomeScreen(false);
-                    actions.setActiveSidebarTab("explorer");
-                  } else {
-                      alert("No recent projects found. Please create one.");
-                    }
-                  })}
+                  onclick={handleOpenFolder}
                 >
                   {#if projectActionPending}<Loader size="sm" />{:else}<FolderOpen size={16} class="welcome-action-icon" />{/if}
-                  <span>Open Project Folder...</span>
-              </button>
-                <button
-                  class="welcome-action-btn"
-                  disabled={projectActionPending}
-                  onclick={() => runProjectAction(async () => {
-                  if ($workspaceStore.projectsList.length > 0) {
-                    await actions.loadProject(
-                      $workspaceStore.projectsList[0].id,
-                    );
-                    actions.setShowWelcomeScreen(false);
-                    actions.setActiveSidebarTab("boards");
-                  } else {
-                      alert("No recent projects found. Please create one.");
-                    }
-                  })}
-                >
-                  {#if projectActionPending}<Loader size="sm" />{:else}<Settings size={16} class="welcome-action-icon" />{/if}
-                <span>Configure Target Hardware...</span>
-              </button>
+                  <span>Import Existing Project...</span>
+                </button>
               <div
                 class="create-project-row"
-                style="display: flex; gap: 8px; margin-top: 8px;"
+                style="display: grid; gap: 8px; margin-top: 8px;"
               >
                 <input
                   type="text"
-                  id="newProjectName"
                   placeholder="New Project Name..."
                   class="welcome-input"
-                  style="flex: 1; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-family: inherit;"
+                  bind:value={newProjectName}
+                  style="padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-family: inherit;"
                 />
+                <input
+                  type="text"
+                  placeholder="Project details (optional)..."
+                  class="welcome-input"
+                  bind:value={newProjectDescription}
+                  style="padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-family: inherit;"
+                />
+                <div class="project-board-picker">
+                  <button
+                    type="button"
+                    bind:this={boardTriggerEl}
+                    class="welcome-input project-board-trigger"
+                    aria-expanded={newProjectBoardPickerOpen}
+                    onclick={toggleBoardMenu}
+                  >
+                    <span>{newProjectBoard?.label || newProjectBoardId || "Select a board"}</span>
+                    <ChevronDown size={16} />
+                  </button>
+                  {#if newProjectBoardPickerOpen}
+                    <div class="project-board-menu" style={boardMenuStyle}>
+                      <input
+                        class="welcome-input project-board-search"
+                        bind:value={newProjectBoardSearch}
+                        placeholder="Search board, MCU, or family..."
+                        aria-label="Search boards"
+                      />
+                      <div class="project-board-options" role="listbox" aria-label="Board options">
+                        {#if !newProjectBoardSearch.trim()}
+                          <p class="project-board-empty">
+                            Search {$workspaceStore.boardCatalog.length} boards by name, MCU, or family.
+                          </p>
+                        {:else}
+                          {#each newProjectBoardOptions as board}
+                            <button
+                              type="button"
+                              class:selected={board.id === newProjectBoardId}
+                              class="project-board-option"
+                              role="option"
+                              aria-selected={board.id === newProjectBoardId}
+                              onclick={() => chooseNewProjectBoard(board.id)}
+                            >
+                              <strong>{board.label}</strong>
+                              <small>{board.family || "Other"}{board.mcu ? ` · ${board.mcu}` : ""}</small>
+                            </button>
+                          {:else}
+                            <p class="project-board-empty">No matching boards.</p>
+                          {/each}
+                        {/if}
+                      </div>
+                    </div>
+                  {/if}
+                </div>
                 <button
                   class="welcome-action-btn"
-                  style="width: auto; padding: 0 20px; margin: 0;"
+                  style="padding: 12px 20px; margin: 0;"
                   disabled={projectActionPending}
-                  onclick={() => runProjectAction(async () => {
-                    const inputEl = document.getElementById(
-                      "newProjectName",
-                    ) as HTMLInputElement;
-                    const projectName =
-                      inputEl?.value?.trim() || "My Embedded Project";
-                    try {
-                      const project = await api.createProject(
-                        projectName,
-                        "Created from IDE",
-                        null,
-                        $workspaceStore.selectedBoard || null,
-                      );
-                      await actions.loadProject(project.id);
-                      await actions.loadProjects(); // Refresh the list
-                      actions.setActiveSidebarTab("explorer");
-                      actions.setShowWelcomeScreen(false);
-                      actions.addBuildLog(
-                        `Created project locally at ${project.path} and saved it to Supabase.`,
-                      );
-                    } catch (e: any) {
-                      handleProjectCreateError(e);
-                    }
-                  })}
+                  onclick={() => runProjectAction(startConfiguredProject)}
                 >
                   {#if projectActionPending}<Loader size="sm" />{:else}<Plus size={16} class="welcome-action-icon" />{/if}
-                  <span>Create</span>
+                  <span>Start Project &amp; Research</span>
                 </button>
               </div>
             </div>
@@ -2062,9 +2138,8 @@
                     disabled={projectActionPending}
                     onclick={() => runProjectAction(async () => {
                       await actions.loadProject(project.id);
-                      actions.setSelectedBoard("bluepill_f103c8");
-                      actions.setSelectedProbe("ST-Link V2");
                       actions.setShowWelcomeScreen(false);
+                      workspaceView = "ide";
                     })}
                   >
                     <div class="recent-name">{#if projectActionPending}<Loader size="sm" />{:else}{project.name}{/if}</div>
@@ -2116,26 +2191,16 @@
                 await actions.loadProjects();
                 if ($workspaceStore.projectsList.length > 0) {
                   await actions.loadProject($workspaceStore.projectsList[0].id);
-                } else {
-                  await api.createProject(
-                    "My Embedded Project",
-                    "Created from IDE",
-                    null,
-                    $workspaceStore.selectedBoard || null,
-                  );
-                  await actions.loadProjects();
-                  const newProj = $workspaceStore.projectsList[0];
-                  if (newProj) await actions.loadProject(newProj.id);
                 }
               }
-              actions.setShowWelcomeScreen(false);
+              if ($workspaceStore.activeProjectId) actions.setShowWelcomeScreen(false);
             })}
           >
             {#if projectActionPending}<Loader size="sm" />{/if}
             <span
               >{$workspaceStore.activeProjectId
                 ? "Return to Workspace"
-                : "Open Workspace"}</span
+                : "Select or Start a Project"}</span
             >
             <ArrowRight size={14} />
           </button>
@@ -2581,14 +2646,7 @@
                   type="button"
                   class="quick-access-item"
                   onclick={() => {
-                    inputPromptModal = {
-                      show: true,
-                      title: "Create New Project",
-                      placeholder: "e.g. Blinky Project",
-                      value: "",
-                      actionType: "project",
-                      folderPath: "",
-                    };
+                    actions.setShowWelcomeScreen(true);
                   }}
                 >
                   <div style="display: flex; align-items: center; gap: 8px;">
