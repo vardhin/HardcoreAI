@@ -45,6 +45,11 @@
   onDestroy(() => window.clearInterval(phase3Clock));
 
   $: projectId = $workspaceStore.activeProjectId;
+  $: researchBoardLabel =
+    $workspaceStore.selectedBoardInfo?.label ||
+    $workspaceStore.selectedBoard ||
+    state?.target_board_id ||
+    "the configured project board";
   $: provider = $workspaceStore.selectedProvider || "cloud";
   $: contexts = state?.contexts || [];
   $: activeContext =
@@ -731,10 +736,11 @@
       {:else if stage === "ideation" && !pendingUser}
         <div class="empty">
           <Sparkles size={26} />
-          <h2>What do you want to build?</h2>
+          <h2>Okay, I’m your research agent.</h2>
           <p>
-            Describe the idea, constraints, budget, expected behavior, or the
-            hardware you already have.
+            Your project is configured for <strong>{researchBoardLabel}</strong>.
+            Tell me what you want to build and we’ll research components,
+            boards, and configuration before moving into the project.
           </p>
         </div>
       {/if}

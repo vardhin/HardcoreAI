@@ -94,6 +94,26 @@ class AdvanceRequest(BaseModel):
     expected_stage: str | None = None
 
 
+def _research_board_context(project) -> str:
+    """Describe the project-configured target without starting a second board flow."""
+    device = registry.get(project.board_id) or registry.default()
+    return f"{device.label} ({device.id})"
+
+
+def _load_state_with_project_board(project_id: str, project) -> dict[str, Any]:
+    """Keep a project's configured board available to Research across reloads."""
+    state = load_research_state(project_id)
+    if not state.get("target_board_id"):
+        state["target_board_id"] = project.board_id
+        state["board_selection"] = {
+            **(state.get("board_selection") or {}),
+            "selected_board_id": project.board_id,
+            "source": "project_configuration",
+        }
+        save_research_state(project_id, state)
+    return state
+
+
 def _upsert_markdown(session, project, path: str, content: str, language: str = "markdown") -> None:
     row = session.exec(
         select(CodeFileRow).where(CodeFileRow.project_id == project.id, CodeFileRow.path == path)
@@ -244,8 +264,8 @@ async def _discover_research_components(
 @router.get("")
 def get_research_state(project_id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
     with db_session(user_id) as session:
-        get_project_or_404(session, project_id, user_id)
-    return load_research_state(project_id)
+        project = get_project_or_404(session, project_id, user_id)
+        return _load_state_with_project_board(project_id, project)
 
 
 @router.post("/contexts")
@@ -310,10 +330,10 @@ def delete_research_context(
 @router.post("/ideate")
 async def ideate(project_id: str, payload: IdeateRequest, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
     with db_session(user_id) as session:
-        get_project_or_404(session, project_id, user_id)
+        project = get_project_or_404(session, project_id, user_id)
         catalogue = catalogue_index(session)
 
-    state = load_research_state(project_id)
+    state = _load_state_with_project_board(project_id, project)
     context = _context_or_none(state, payload.context_id)
     if payload.context_id and context is None:
         raise HTTPException(status_code=404, detail="Research context not found")
@@ -344,6 +364,7 @@ async def ideate(project_id: str, payload: IdeateRequest, user_id: str = Depends
         provider=payload.provider or "deepseek",
         history=prior_messages,
         stage=state.get("stage", "ideation"),
+        board_context=_research_board_context(project),
     )
     state.setdefault("ideas", []).append(payload.idea)
     state["summary"] = summary
@@ -372,10 +393,10 @@ async def ideate_stream(
 ) -> StreamingResponse:
     """Stream a phase-aware research conversation and persist it when complete."""
     with db_session(user_id) as session:
-        get_project_or_404(session, project_id, user_id)
+        project = get_project_or_404(session, project_id, user_id)
         catalogue = catalogue_index(session)
 
-    state = load_research_state(project_id)
+    state = _load_state_with_project_board(project_id, project)
     context = _context_or_none(state, payload.context_id)
     if payload.context_id and context is None:
         raise HTTPException(status_code=404, detail="Research context not found")
@@ -422,6 +443,7 @@ async def ideate_stream(
                 history=prior_messages,
                 stage=stage,
                 review_context=state.get("final_markdown", ""),
+                board_context=_research_board_context(project),
             ):
                 chunks.append(chunk)
                 yield _research_sse({"type": "delta", "text": chunk})

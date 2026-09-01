@@ -568,6 +568,7 @@ def research_chat_messages(
     history: list[dict[str, str]] | None = None,
     stage: str = "ideation",
     review_context: str = "",
+    board_context: str = "",
 ) -> list[dict[str, str]]:
     """Build phase-aware chat messages without leaking catalogue mechanics into ideation."""
     names = "\n".join(
@@ -590,6 +591,13 @@ def research_chat_messages(
             "use headings such as Goal, Constraints, Capabilities, Tradeoffs, or Recommended direction. "
             "The catalogue matches below are private background only: do not enumerate or recommend them "
             "unless the user explicitly asks about parts. Keep the reply conversational and under 160 words."
+            + (
+                "\n\nThe project is already configured for this target board: "
+                f"{board_context}. Use it as the current context. You may compare alternatives if asked, "
+                "but do not send the user back through board setup."
+                if board_context
+                else ""
+            )
         )
     elif stage == "final_review":
         system = (
@@ -628,6 +636,7 @@ async def stream_research_response(
     history: list[dict[str, str]] | None = None,
     stage: str = "ideation",
     review_context: str = "",
+    board_context: str = "",
 ) -> AsyncIterator[str]:
     """Yield the research reply directly from the provider."""
     async for chunk in llm.stream(
@@ -638,6 +647,7 @@ async def stream_research_response(
             history=history,
             stage=stage,
             review_context=review_context,
+            board_context=board_context,
         ),
     ):
         yield chunk
@@ -650,6 +660,7 @@ async def summarize_with_deepseek_or_fallback(
     provider: str = "deepseek",
     history: list[dict[str, str]] | None = None,
     stage: str = "ideation",
+    board_context: str = "",
 ) -> str:
     fallback = research_fallback_response(
         idea=idea,
@@ -663,6 +674,7 @@ async def summarize_with_deepseek_or_fallback(
             recommendations=recommendations,
             history=history,
             stage=stage,
+            board_context=board_context,
         ))
         return text.strip() or fallback
     except Exception:
