@@ -76,7 +76,7 @@ class ProjectOut(SQLModel):
     name: str
     description: str
     path: str | None = None
-    board_id: str
+    board_id: str | None = None
     created_at: datetime
     updated_at: datetime
 

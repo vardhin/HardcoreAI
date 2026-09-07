@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlmodel import JSON, Column, SQLModel
+from sqlalchemy import String
 from sqlmodel import Field as SQLField
 
 from core.config import now_utc
@@ -68,7 +69,7 @@ class ProjectRow(SQLModel, table=True):
     id: int | None = SQLField(default=None, primary_key=True)
     name: str
     description: str = ""
-    board_id: str = SQLField(default="bluepill_f103c8")
+    board_id: str | None = SQLField(default=None, sa_column=Column(String, nullable=True))
     user_id: UUID | None = SQLField(default=None)
     path: str | None = SQLField(default=None)
     viewport: dict[str, Any] = SQLField(

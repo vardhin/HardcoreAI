@@ -90,6 +90,19 @@
     showOnboarding = false;
   }
 
+  // When the user successfully signs in and there is no active project,
+  // show the welcome/project-creation screen so they can create or import
+  // their first project. This ensures the flow lands on project creation
+  // after OAuth sign-in redirects back to the app.
+  let _lastSignedInUser: string | null = null;
+  $: if ($authState.user?.id && $authState.user.id !== _lastSignedInUser) {
+    _lastSignedInUser = $authState.user.id;
+    // Always surface the welcome/project-creation screen after sign-in so
+    // users can create a new project or explicitly open their existing one
+    // from the welcome view.
+    actions.setShowWelcomeScreen(true);
+  }
+
   let showAdminPanel = false;
   let projectActionPending = false;
   let newProjectName = "";
@@ -104,17 +117,24 @@
   let selectedPeripheral = "Core Registers";
   let boardLabel = "Select a board";
 
-  $: boardLabel =
-    $workspaceStore.selectedBoardInfo?.label ||
-    $workspaceStore.selectedBoard ||
-    "Select a board";
-  $: if (!newProjectBoardId && $workspaceStore.selectedBoard) {
-    newProjectBoardId = $workspaceStore.selectedBoard;
-  }
+  $: activeProject =
+    $workspaceStore.projectsList?.find(
+      (p: any) => String(p.id) === String($workspaceStore.activeProjectId),
+    ) || null;
+  $: projectBoardId = activeProject?.board_id || null;
+  // Only show a board when the active project has a persisted board.
+  $: boardLabel = projectBoardId
+    ? $workspaceStore.boardCatalog.find((b: any) => b.id === projectBoardId)
+        ?.label || projectBoardId
+    : "Select a board";
+  // Do not auto-fill the new-project board from any global selection; the
+  // user must explicitly choose a board when creating a project. This keeps
+  // project creation independent and avoids accidental inheritance of the
+  // previously-selected board.
   $: newProjectBoard =
-    $workspaceStore.boardCatalog.find((board) => board.id === newProjectBoardId) ||
-    $workspaceStore.selectedBoardInfo ||
-    null;
+    $workspaceStore.boardCatalog.find(
+      (board) => board.id === newProjectBoardId,
+    ) || null;
   $: newProjectBoardOptions = (() => {
     const query = newProjectBoardSearch.trim().toLowerCase();
     if (!query) return [];
@@ -158,7 +178,10 @@
     const spaceBelow = viewportHeight - rect.bottom - gap - 12;
     const spaceAbove = rect.top - gap - 12;
     const openUpward = spaceBelow < 180 && spaceAbove > spaceBelow;
-    const maxHeight = Math.max(120, Math.min(360, openUpward ? spaceAbove : spaceBelow));
+    const maxHeight = Math.max(
+      120,
+      Math.min(360, openUpward ? spaceAbove : spaceBelow),
+    );
     boardMenuStyle = [
       `left:${rect.left}px`,
       `width:${rect.width}px`,
@@ -209,7 +232,9 @@
     detectingBoard = false;
   }
   function applyDetectedBoard(id: string) {
-    actions.setSelectedBoard(id as any);
+    // Persist selection to the active project because this action is
+    // explicitly triggered by the user from the detection UI.
+    actions.setSelectedBoard(id as any, true);
     detectResult = null;
   }
   async function refreshBoardCatalog() {
@@ -308,15 +333,17 @@
   $: groupedBoards = (() => {
     const q = boardSearchQuery.trim().toLowerCase();
     const filtered = $workspaceStore.boardCatalog.filter(
-          (b) =>
-            (!boardManufacturerFilter || (b.manufacturer ?? b.vendor ?? "").toLowerCase() === boardManufacturerFilter.toLowerCase()) &&
-            (!boardFamilyFilter || (b.family ?? "") === boardFamilyFilter) &&
-            (!q ||
-            b.label.toLowerCase().includes(q) ||
-            b.id.toLowerCase().includes(q) ||
-            (b.mcu ?? "").toLowerCase().includes(q) ||
-            (b.family ?? "").toLowerCase().includes(q)),
-        );
+      (b) =>
+        (!boardManufacturerFilter ||
+          (b.manufacturer ?? b.vendor ?? "").toLowerCase() ===
+            boardManufacturerFilter.toLowerCase()) &&
+        (!boardFamilyFilter || (b.family ?? "") === boardFamilyFilter) &&
+        (!q ||
+          b.label.toLowerCase().includes(q) ||
+          b.id.toLowerCase().includes(q) ||
+          (b.mcu ?? "").toLowerCase().includes(q) ||
+          (b.family ?? "").toLowerCase().includes(q)),
+    );
     const byFamily = new Map<string, typeof filtered>();
     for (const board of filtered) {
       const key = board.family || "Other";
@@ -330,8 +357,18 @@
         boards.slice().sort((a, b) => a.label.localeCompare(b.label)),
       ]) as [string, typeof filtered][];
   })();
-  $: boardManufacturers = [...new Set($workspaceStore.boardCatalog.map((b) => b.manufacturer ?? b.vendor).filter(Boolean))].sort();
-  $: boardFamilies = [...new Set($workspaceStore.boardCatalog.map((b) => b.family).filter(Boolean))].sort();
+  $: boardManufacturers = [
+    ...new Set(
+      $workspaceStore.boardCatalog
+        .map((b) => b.manufacturer ?? b.vendor)
+        .filter(Boolean),
+    ),
+  ].sort();
+  $: boardFamilies = [
+    ...new Set(
+      $workspaceStore.boardCatalog.map((b) => b.family).filter(Boolean),
+    ),
+  ].sort();
 
   // The configurator is available from View, but no longer consumes half the
   // workspace on every launch.
@@ -579,6 +616,28 @@
     if (isLightTheme) {
       document.body.classList.add("light-theme");
     }
+    // One-time migration: clear legacy global selected board keys left
+    // behind by earlier versions so the app no longer inherits a global
+    // board unexpectedly. We set a flag so this runs only once per browser.
+    try {
+      const FLAG = "hcai_legacy_board_cleared_v1";
+      if (typeof localStorage !== "undefined" && !localStorage.getItem(FLAG)) {
+        localStorage.removeItem("selectedBoard");
+        localStorage.removeItem("selectedBoardInfo");
+        localStorage.removeItem("selectedProbe");
+        localStorage.setItem(FLAG, "1");
+        // Also ensure in-memory store is cleared for immediate UI consistency.
+        workspaceStore.update((s) => ({
+          ...s,
+          selectedBoard: "",
+          selectedBoardInfo: null,
+          selectedProbe: null,
+        }));
+      }
+    } catch (e) {
+      // Fail silently — this is a best-effort migration.
+      console.warn("Legacy board cleanup failed", e);
+    }
   });
 
   // DOM Elements
@@ -679,13 +738,16 @@
 
   function handleProjectCreateError(error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    if (message.toLowerCase().includes("project limit")) showProjectLimitModal = true;
+    if (message.toLowerCase().includes("project limit"))
+      showProjectLimitModal = true;
     actions.addBuildLog("Failed to create project: " + message);
   }
 
   async function startConfiguredProject() {
     const name = newProjectName.trim() || "My Embedded Project";
-    const boardId = newProjectBoardId || $workspaceStore.selectedBoard || null;
+    // Do not inherit the global selected board for new projects — only use a
+    // board if the user explicitly chose one in the (now-removed) picker.
+    const boardId = newProjectBoardId || null;
     try {
       const project = await api.createProject(
         name,
@@ -693,6 +755,17 @@
         null,
         boardId,
       );
+      // Ensure the global selected board is cleared for a fresh project so
+      // the UI doesn't inherit any previously-selected board from localStorage.
+      workspaceStore.update((s) => ({
+        ...s,
+        selectedBoard: "",
+        selectedBoardInfo: null,
+      }));
+      try {
+        localStorage.removeItem("selectedBoard");
+        localStorage.removeItem("selectedBoardInfo");
+      } catch {}
       await actions.loadProjects();
       await actions.loadProject(project.id);
       actions.setActiveSidebarTab("explorer");
@@ -1576,19 +1649,19 @@
   async function handleOpenFolder() {
     await runProjectAction(async () => {
       try {
-      const path = await api.pickFolder();
-      if (!path) return; // user cancelled the native dialog
+        const path = await api.pickFolder();
+        if (!path) return; // user cancelled the native dialog
 
-      const folderName =
-        path
-          .replace(/[\\/]+$/, "")
-          .split(/[\\/]/)
-          .pop() || "Imported Project";
-      const project = await api.createProject(folderName, "", path);
-      await actions.loadProjects();
-      await actions.loadProject(project.id);
-      actions.setShowWelcomeScreen(false);
-      actions.setActiveSidebarTab("explorer");
+        const folderName =
+          path
+            .replace(/[\\/]+$/, "")
+            .split(/[\\/]/)
+            .pop() || "Imported Project";
+        const project = await api.createProject(folderName, "", path);
+        await actions.loadProjects();
+        await actions.loadProject(project.id);
+        actions.setShowWelcomeScreen(false);
+        actions.setActiveSidebarTab("explorer");
       } catch (err) {
         console.error("Open Folder failed:", err);
       }
@@ -1611,10 +1684,7 @@
     if (showAccountMenu && !target.closest(".account-menu-container")) {
       showAccountMenu = false;
     }
-    if (
-      newProjectBoardPickerOpen &&
-      !target.closest(".project-board-picker")
-    ) {
+    if (newProjectBoardPickerOpen && !target.closest(".project-board-picker")) {
       newProjectBoardPickerOpen = false;
     }
   }}
@@ -1662,8 +1732,12 @@
 
 {#if $authState.user && showOnboarding}
   <Onboarding
-    onComplete={() => { showOnboarding = false; }}
-    onDismiss={() => { showOnboarding = false; }}
+    onComplete={() => {
+      showOnboarding = false;
+    }}
+    onDismiss={() => {
+      showOnboarding = false;
+    }}
   />
 {/if}
 
@@ -1673,330 +1747,357 @@
 >
   <!-- 1. Header Command Bar -->
   {#if !showAdminPanel}
-  <header class="helix-header">
-    <div class="logo-section">
-      <div class="logo-text">HARDCORE<span>AI</span></div>
-      <div class="target-tag-pill">
-        <span>Target: {boardLabel}</span>
-      </div>
-    </div>
-
-    <!-- Center Actions Capsule -->
-    <div class="command-capsule">
-      <button
-        class="capsule-btn build"
-        onclick={handleBuild}
-        disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
-        title="Compile Project (build only)"
-      >
-        <Play size={12} class="play-triangle-fill" />
-        <span>{$workspaceStore.isCompiling ? "Compiling..." : "Build"}</span>
-      </button>
-
-      <div class="divider-line"></div>
-
-      <button
-        class="capsule-btn build"
-        onclick={handleBuildAndCheck}
-        disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
-        title="Compile Project and send output to the agent to check"
-      >
-        <Check size={12} />
-        <span>Build &amp; Check</span>
-      </button>
-
-      <div class="divider-line"></div>
-
-      <button
-        class="capsule-btn flash"
-        onclick={handleFlash}
-        disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
-        title="Flash to Device"
-      >
-        <Zap size={12} />
-        <span>{$workspaceStore.isFlashing ? "Flashing..." : "Flash"}</span>
-      </button>
-
-      <div class="divider-line"></div>
-
-      <button
-        class="capsule-btn debug {$workspaceStore.isDebugging ? 'active' : ''}"
-        onclick={() => {
-          if ($workspaceStore.isDebugging) actions.stopDebugging();
-          else actions.startDebugging();
-        }}
-        disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
-        title="Start/Stop Debugger"
-      >
-        {#if $workspaceStore.isDebugging}
-          <Square size={12} fill="currentColor" />
-        {:else}
-          <Bug size={12} />
+    <header class="helix-header">
+      <div class="logo-section">
+        <div class="logo-text">HARDCORE<span>AI</span></div>
+        {#if $workspaceStore.activeProjectId && !$workspaceStore.showWelcomeScreen}
+          <div class="target-tag-pill">
+            <span>Target: {boardLabel}</span>
+          </div>
         {/if}
-        <span>{$workspaceStore.isDebugging ? "Stop" : "Debug"}</span>
-      </button>
-
-      <div class="divider-line"></div>
-
-      <button
-        class="capsule-btn research {workspaceView === 'research'
-          ? 'active'
-          : ''}"
-        onclick={() =>
-          (workspaceView = workspaceView === "research" ? "ide" : "research")}
-        title={workspaceView === "research" ? "Return to IDE" : "Open Research"}
-      >
-        <Brain size={12} />
-        <span>{workspaceView === "research" ? "IDE" : "Research"}</span>
-      </button>
-    </div>
-
-    <!-- Connectivity Status & Controls -->
-      <div class="connection-status-group">
-      <div class="connection-status">
-        <button
-          class="status-pill"
-          onclick={() => actions.setActiveSidebarTab("rag")}
-          style="cursor: pointer;"
-          title="Active Vector Database Files"
-        >
-          <span class="status-dot ai-active"></span>
-          <span>RAG Active: {$workspaceStore.ragDocuments.length} Docs</span>
-        </button>
       </div>
 
-      <!-- Quick Access Right -->
-      <div
-        class="tauri-controls-group"
-        style="display: flex; align-items: center; gap: 8px;"
-      >
-        <!-- Take SS Button -->
+      <!-- Center Actions Capsule -->
+      <div class="command-capsule">
         <button
-          type="button"
-          class="control-icon-btn"
-          onclick={takeScreenshot}
-          title="Take Screenshot (PNG)"
-          style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer;"
+          class="capsule-btn build"
+          onclick={handleBuild}
+          disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
+          title="Compile Project (build only)"
         >
-          <Camera size={13} />
-          <span style="font-size: 0.72rem; font-weight: 500;">Take SS</span>
+          <Play size={12} class="play-triangle-fill" />
+          <span>{$workspaceStore.isCompiling ? "Compiling..." : "Build"}</span>
         </button>
 
-        <!-- View Panels Toggle Dropdown -->
-        <div class="view-menu-container" style="position: relative;">
-          <button
-            type="button"
-            class="control-icon-btn view-toggle-btn"
-            style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer;"
-            onclick={() => (showViewDropdown = !showViewDropdown)}
-            title="Toggle Panels Layout"
-          >
-            <Sliders size={13} />
-            <span style="font-size: 0.72rem; font-weight: 500;">View</span>
-          </button>
+        <div class="divider-line"></div>
 
-          {#if showViewDropdown}
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div
-              class="view-dropdown-menu"
-              onclick={() => (showViewDropdown = false)}
-            >
-              <div class="dropdown-header">Toggle Panels</div>
+        <button
+          class="capsule-btn build"
+          onclick={handleBuildAndCheck}
+          disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
+          title="Compile Project and send output to the agent to check"
+        >
+          <Check size={12} />
+          <span>Build &amp; Check</span>
+        </button>
 
-              <div
-                class="dropdown-item"
-                onclick={(e) => e.stopPropagation()}
-                style="align-items: flex-start; gap: 8px; flex-direction: column;"
-              >
-                <span>Model Selection</span>
-                <select
-                  value={$workspaceStore.selectedProvider}
-                  onchange={(e) =>
-                    setSelectedProvider(
-                      (e.currentTarget as HTMLSelectElement).value,
-                    )}
-                  style="width: 100%; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px;"
-                  title="AI model provider"
-                >
-                  {#each agentProviders as provider}
-                    <option value={provider.id} disabled={!provider.available}>
-                      {provider.label} - {provider.model}{provider.available
-                        ? ""
-                        : " (unavailable)"}
-                    </option>
-                  {/each}
-                </select>
-                <span style="font-size: 0.68rem; color: var(--text-muted);">
-                  Active: {selectedProviderMeta?.label ?? "Provider"} / {selectedProviderMeta?.model ??
-                    "model"}
-                </span>
-              </div>
+        <div class="divider-line"></div>
 
-              <button
-                type="button"
-                class="dropdown-item"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  showSidebar = !showSidebar;
-                }}
-              >
-                <span>Left Sidebar</span>
-                <span
-                  class="check-icon"
-                  style="color: {showSidebar
-                    ? 'var(--accent-violet)'
-                    : 'var(--text-dark)'}">{showSidebar ? "✓" : "○"}</span
-                >
-              </button>
+        <button
+          class="capsule-btn flash"
+          onclick={handleFlash}
+          disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
+          title="Flash to Device"
+        >
+          <Zap size={12} />
+          <span>{$workspaceStore.isFlashing ? "Flashing..." : "Flash"}</span>
+        </button>
 
-              <button
-                type="button"
-                class="dropdown-item"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  actions.setTerminalOpen(!$workspaceStore.terminalOpen);
-                }}
-              >
-                <span>Bottom Terminal</span>
-                <span
-                  class="check-icon"
-                  style="color: {$workspaceStore.terminalOpen
-                    ? 'var(--accent-violet)'
-                    : 'var(--text-dark)'}"
-                  >{$workspaceStore.terminalOpen ? "✓" : "○"}</span
-                >
-              </button>
+        <div class="divider-line"></div>
 
-              <button
-                type="button"
-                class="dropdown-item"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  showConfigurator = !showConfigurator;
-                }}
-              >
-                <span>Embedded Configurator</span>
-                <span
-                  class="check-icon"
-                  style="color: {showConfigurator
-                    ? 'var(--accent-violet)'
-                    : 'var(--text-dark)'}">{showConfigurator ? "✓" : "○"}</span
-                >
-              </button>
-
-              <button
-                type="button"
-                class="dropdown-item"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  showCopilot = !showCopilot;
-                }}
-              >
-                <span>AI Copilot Chat</span>
-                <span
-                  class="check-icon"
-                  style="color: {showCopilot
-                    ? 'var(--accent-violet)'
-                    : 'var(--text-dark)'}">{showCopilot ? "✓" : "○"}</span
-                >
-              </button>
-            </div>
-          {/if}
-        </div>
-
-        <Search
-          size={14}
-          class="control-icon-btn"
-          onclick={() => actions.setActiveSidebarTab("search")}
-        />
-        <Settings
-          size={14}
-          class="control-icon-btn"
+        <button
+          class="capsule-btn debug {$workspaceStore.isDebugging
+            ? 'active'
+            : ''}"
           onclick={() => {
-            showConfigurator = true;
-            showCopilot = true;
+            if ($workspaceStore.isDebugging) actions.stopDebugging();
+            else actions.startDebugging();
           }}
-        />
-        <button
-          type="button"
-          class="control-icon-btn readme-trigger"
-          onclick={() => (showReadme = true)}
-          title="Open HardcoreAI Getting Started"
-          aria-label="Open HardcoreAI Getting Started"
+          disabled={$workspaceStore.isCompiling || $workspaceStore.isFlashing}
+          title="Start/Stop Debugger"
         >
-          <BookOpen size={14} />
-        </button>
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
-        <div
-          class="control-icon-btn"
-          onclick={toggleTheme}
-          title="Toggle light/dark theme"
-        >
-          {#if isLightTheme}
-            <Sun size={14} />
+          {#if $workspaceStore.isDebugging}
+            <Square size={12} fill="currentColor" />
           {:else}
-            <Moon size={14} />
+            <Bug size={12} />
           {/if}
-        </div>
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
-        <div
-          class="control-icon-btn close-btn-highlight"
-          onclick={() => actions.setShowWelcomeScreen(true)}
+          <span>{$workspaceStore.isDebugging ? "Stop" : "Debug"}</span>
+        </button>
+
+        <div class="divider-line"></div>
+
+        <button
+          class="capsule-btn research {workspaceView === 'research'
+            ? 'active'
+            : ''}"
+          onclick={() =>
+            (workspaceView = workspaceView === "research" ? "ide" : "research")}
+          title={workspaceView === "research"
+            ? "Return to IDE"
+            : "Open Research"}
         >
-          <X size={14} />
+          <Brain size={12} />
+          <span>{workspaceView === "research" ? "IDE" : "Research"}</span>
+        </button>
+      </div>
+
+      <!-- Connectivity Status & Controls -->
+      <div class="connection-status-group">
+        <div class="connection-status">
+          <button
+            class="status-pill"
+            onclick={() => actions.setActiveSidebarTab("rag")}
+            style="cursor: pointer;"
+            title="Active Vector Database Files"
+          >
+            <span class="status-dot ai-active"></span>
+            <span>RAG Active: {$workspaceStore.ragDocuments.length} Docs</span>
+          </button>
         </div>
-        <div class="account-menu-container">
+
+        <!-- Quick Access Right -->
+        <div
+          class="tauri-controls-group"
+          style="display: flex; align-items: center; gap: 8px;"
+        >
+          <!-- Take SS Button -->
           <button
             type="button"
-            class="account-trigger"
-            title={$authState.user?.email || "Signed in"}
-            aria-haspopup="menu"
-            aria-expanded={showAccountMenu}
-            onclick={() => (showAccountMenu = !showAccountMenu)}
+            class="control-icon-btn"
+            onclick={takeScreenshot}
+            title="Take Screenshot (PNG)"
+            style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer;"
           >
-            <span class="account-avatar"
-              >{($authState.user?.email || "U").slice(0, 1).toUpperCase()}</span
-            >
-            <span>Account</span>
-            <ChevronDown size={12} />
+            <Camera size={13} />
+            <span style="font-size: 0.72rem; font-weight: 500;">Take SS</span>
           </button>
-          {#if showAccountMenu}
-            <div class="account-dropdown" role="menu">
-              <div class="account-identity">
-                <UserRound size={16} class="account-identity-icon" />
-                <div>
-                  <strong>{$authState.user?.user_metadata?.full_name ||
-                    $authState.user?.user_metadata?.name ||
-                    "Signed in"}</strong>
-                  <small>{$authState.user?.email || "Authenticated user"}</small>
-                </div>
-              </div>
-              <button type="button" role="menuitem" onclick={() => { showAdminPanel = true; showAccountMenu = false; }}>
-                <Database size={15} />
-                <span>Admin panel</span>
-              </button>
-              <button type="button" role="menuitem" onclick={handleSwitchUser}>
-                <UserRound size={15} />
-                <span>Switch user</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="account-signout"
-                onclick={handleSignOut}
+
+          <!-- View Panels Toggle Dropdown -->
+          <div class="view-menu-container" style="position: relative;">
+            <button
+              type="button"
+              class="control-icon-btn view-toggle-btn"
+              style="display: flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; color: var(--text-muted); cursor: pointer;"
+              onclick={() => (showViewDropdown = !showViewDropdown)}
+              title="Toggle Panels Layout"
+            >
+              <Sliders size={13} />
+              <span style="font-size: 0.72rem; font-weight: 500;">View</span>
+            </button>
+
+            {#if showViewDropdown}
+              <!-- svelte-ignore a11y-click-events-have-key-events -->
+              <!-- svelte-ignore a11y-no-static-element-interactions -->
+              <div
+                class="view-dropdown-menu"
+                onclick={() => (showViewDropdown = false)}
               >
-                <LogOut size={15} />
-                <span>Sign out</span>
-              </button>
-            </div>
-          {/if}
+                <div class="dropdown-header">Toggle Panels</div>
+
+                <div
+                  class="dropdown-item"
+                  onclick={(e) => e.stopPropagation()}
+                  style="align-items: flex-start; gap: 8px; flex-direction: column;"
+                >
+                  <span>Model Selection</span>
+                  <select
+                    value={$workspaceStore.selectedProvider}
+                    onchange={(e) =>
+                      setSelectedProvider(
+                        (e.currentTarget as HTMLSelectElement).value,
+                      )}
+                    style="width: 100%; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px;"
+                    title="AI model provider"
+                  >
+                    {#each agentProviders as provider}
+                      <option
+                        value={provider.id}
+                        disabled={!provider.available}
+                      >
+                        {provider.label} - {provider.model}{provider.available
+                          ? ""
+                          : " (unavailable)"}
+                      </option>
+                    {/each}
+                  </select>
+                  <span style="font-size: 0.68rem; color: var(--text-muted);">
+                    Active: {selectedProviderMeta?.label ?? "Provider"} / {selectedProviderMeta?.model ??
+                      "model"}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    showSidebar = !showSidebar;
+                  }}
+                >
+                  <span>Left Sidebar</span>
+                  <span
+                    class="check-icon"
+                    style="color: {showSidebar
+                      ? 'var(--accent-violet)'
+                      : 'var(--text-dark)'}">{showSidebar ? "✓" : "○"}</span
+                  >
+                </button>
+
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    actions.setTerminalOpen(!$workspaceStore.terminalOpen);
+                  }}
+                >
+                  <span>Bottom Terminal</span>
+                  <span
+                    class="check-icon"
+                    style="color: {$workspaceStore.terminalOpen
+                      ? 'var(--accent-violet)'
+                      : 'var(--text-dark)'}"
+                    >{$workspaceStore.terminalOpen ? "✓" : "○"}</span
+                  >
+                </button>
+
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    showConfigurator = !showConfigurator;
+                  }}
+                >
+                  <span>Embedded Configurator</span>
+                  <span
+                    class="check-icon"
+                    style="color: {showConfigurator
+                      ? 'var(--accent-violet)'
+                      : 'var(--text-dark)'}"
+                    >{showConfigurator ? "✓" : "○"}</span
+                  >
+                </button>
+
+                <button
+                  type="button"
+                  class="dropdown-item"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    showCopilot = !showCopilot;
+                  }}
+                >
+                  <span>AI Copilot Chat</span>
+                  <span
+                    class="check-icon"
+                    style="color: {showCopilot
+                      ? 'var(--accent-violet)'
+                      : 'var(--text-dark)'}">{showCopilot ? "✓" : "○"}</span
+                  >
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          <Search
+            size={14}
+            class="control-icon-btn"
+            onclick={() => actions.setActiveSidebarTab("search")}
+          />
+          <Settings
+            size={14}
+            class="control-icon-btn"
+            onclick={() => {
+              showConfigurator = true;
+              showCopilot = true;
+            }}
+          />
+          <button
+            type="button"
+            class="control-icon-btn readme-trigger"
+            onclick={() => (showReadme = true)}
+            title="Open HardcoreAI Getting Started"
+            aria-label="Open HardcoreAI Getting Started"
+          >
+            <BookOpen size={14} />
+          </button>
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
+          <div
+            class="control-icon-btn"
+            onclick={toggleTheme}
+            title="Toggle light/dark theme"
+          >
+            {#if isLightTheme}
+              <Sun size={14} />
+            {:else}
+              <Moon size={14} />
+            {/if}
+          </div>
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
+          <div
+            class="control-icon-btn close-btn-highlight"
+            onclick={() => actions.setShowWelcomeScreen(true)}
+          >
+            <X size={14} />
+          </div>
+          <div class="account-menu-container">
+            <button
+              type="button"
+              class="account-trigger"
+              title={$authState.user?.email || "Signed in"}
+              aria-haspopup="menu"
+              aria-expanded={showAccountMenu}
+              onclick={() => (showAccountMenu = !showAccountMenu)}
+            >
+              <span class="account-avatar"
+                >{($authState.user?.email || "U")
+                  .slice(0, 1)
+                  .toUpperCase()}</span
+              >
+              <span>Account</span>
+              <ChevronDown size={12} />
+            </button>
+            {#if showAccountMenu}
+              <div class="account-dropdown" role="menu">
+                <div class="account-identity">
+                  <UserRound size={16} class="account-identity-icon" />
+                  <div>
+                    <strong
+                      >{$authState.user?.user_metadata?.full_name ||
+                        $authState.user?.user_metadata?.name ||
+                        "Signed in"}</strong
+                    >
+                    <small
+                      >{$authState.user?.email || "Authenticated user"}</small
+                    >
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onclick={() => {
+                    showAdminPanel = true;
+                    showAccountMenu = false;
+                  }}
+                >
+                  <Database size={15} />
+                  <span>Admin panel</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onclick={handleSwitchUser}
+                >
+                  <UserRound size={15} />
+                  <span>Switch user</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="account-signout"
+                  onclick={handleSignOut}
+                >
+                  <LogOut size={15} />
+                  <span>Sign out</span>
+                </button>
+              </div>
+            {/if}
+          </div>
         </div>
       </div>
-    </div>
-  </header>
+    </header>
   {/if}
 
   {#if $authState.user && showReadme && !showOnboarding}
@@ -2040,14 +2141,17 @@
                   >
                 </button>
               {/if}
-                <button
-                  class="welcome-action-btn"
-                  disabled={projectActionPending}
-                  onclick={handleOpenFolder}
-                >
-                  {#if projectActionPending}<Loader size="sm" />{:else}<FolderOpen size={16} class="welcome-action-icon" />{/if}
-                  <span>Import Existing Project...</span>
-                </button>
+              <button
+                class="welcome-action-btn"
+                disabled={projectActionPending}
+                onclick={handleOpenFolder}
+              >
+                {#if projectActionPending}<Loader size="sm" />{:else}<FolderOpen
+                    size={16}
+                    class="welcome-action-icon"
+                  />{/if}
+                <span>Import Existing Project...</span>
+              </button>
               <div
                 class="create-project-row"
                 style="display: grid; gap: 8px; margin-top: 8px;"
@@ -2066,58 +2170,20 @@
                   bind:value={newProjectDescription}
                   style="padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: white; font-family: inherit;"
                 />
-                <div class="project-board-picker">
-                  <button
-                    type="button"
-                    bind:this={boardTriggerEl}
-                    class="welcome-input project-board-trigger"
-                    aria-expanded={newProjectBoardPickerOpen}
-                    onclick={toggleBoardMenu}
-                  >
-                    <span>{newProjectBoard?.label || newProjectBoardId || "Select a board"}</span>
-                    <ChevronDown size={16} />
-                  </button>
-                  {#if newProjectBoardPickerOpen}
-                    <div class="project-board-menu" style={boardMenuStyle}>
-                      <input
-                        class="welcome-input project-board-search"
-                        bind:value={newProjectBoardSearch}
-                        placeholder="Search board, MCU, or family..."
-                        aria-label="Search boards"
-                      />
-                      <div class="project-board-options" role="listbox" aria-label="Board options">
-                        {#if !newProjectBoardSearch.trim()}
-                          <p class="project-board-empty">
-                            Search {$workspaceStore.boardCatalog.length} boards by name, MCU, or family.
-                          </p>
-                        {:else}
-                          {#each newProjectBoardOptions as board}
-                            <button
-                              type="button"
-                              class:selected={board.id === newProjectBoardId}
-                              class="project-board-option"
-                              role="option"
-                              aria-selected={board.id === newProjectBoardId}
-                              onclick={() => chooseNewProjectBoard(board.id)}
-                            >
-                              <strong>{board.label}</strong>
-                              <small>{board.family || "Other"}{board.mcu ? ` · ${board.mcu}` : ""}</small>
-                            </button>
-                          {:else}
-                            <p class="project-board-empty">No matching boards.</p>
-                          {/each}
-                        {/if}
-                      </div>
-                    </div>
-                  {/if}
-                </div>
+                <!-- Board selection removed from the quick project creation flow.
+                     Projects can be started without choosing a board; the AI will
+                     recommend a board during Research. Use the Boards view to set
+                     a board later. -->
                 <button
                   class="welcome-action-btn"
                   style="padding: 12px 20px; margin: 0;"
                   disabled={projectActionPending}
                   onclick={() => runProjectAction(startConfiguredProject)}
                 >
-                  {#if projectActionPending}<Loader size="sm" />{:else}<Plus size={16} class="welcome-action-icon" />{/if}
+                  {#if projectActionPending}<Loader size="sm" />{:else}<Plus
+                      size={16}
+                      class="welcome-action-icon"
+                    />{/if}
                   <span>Start Project &amp; Research</span>
                 </button>
               </div>
@@ -2136,13 +2202,18 @@
                     class="recent-item"
                     style="flex: 1; border: none; margin-bottom: 0; background: transparent; text-align: left; cursor: pointer;"
                     disabled={projectActionPending}
-                    onclick={() => runProjectAction(async () => {
-                      await actions.loadProject(project.id);
-                      actions.setShowWelcomeScreen(false);
-                      workspaceView = "ide";
-                    })}
+                    onclick={() =>
+                      runProjectAction(async () => {
+                        await actions.loadProject(project.id);
+                        actions.setShowWelcomeScreen(false);
+                        workspaceView = "ide";
+                      })}
                   >
-                    <div class="recent-name">{#if projectActionPending}<Loader size="sm" />{:else}{project.name}{/if}</div>
+                    <div class="recent-name">
+                      {#if projectActionPending}<Loader
+                          size="sm"
+                        />{:else}{project.name}{/if}
+                    </div>
                     <div class="recent-path">
                       Project ID: {project.id} | {new Date(
                         project.created_at,
@@ -2186,15 +2257,19 @@
           <button
             class="welcome-enter-btn"
             disabled={projectActionPending}
-            onclick={() => runProjectAction(async () => {
-              if (!$workspaceStore.activeProjectId) {
-                await actions.loadProjects();
-                if ($workspaceStore.projectsList.length > 0) {
-                  await actions.loadProject($workspaceStore.projectsList[0].id);
+            onclick={() =>
+              runProjectAction(async () => {
+                if (!$workspaceStore.activeProjectId) {
+                  await actions.loadProjects();
+                  if ($workspaceStore.projectsList.length > 0) {
+                    await actions.loadProject(
+                      $workspaceStore.projectsList[0].id,
+                    );
+                  }
                 }
-              }
-              if ($workspaceStore.activeProjectId) actions.setShowWelcomeScreen(false);
-            })}
+                if ($workspaceStore.activeProjectId)
+                  actions.setShowWelcomeScreen(false);
+              })}
           >
             {#if projectActionPending}<Loader size="sm" />{/if}
             <span
@@ -2215,12 +2290,9 @@
           showCopilot = true;
           showConfigurator = false;
           actModeHandoff = handoff;
-          if (
-            handoff?.target_board_id &&
-            handoff.target_board_id !== $workspaceStore.selectedBoard
-          ) {
-            actions.setSelectedBoard(handoff.target_board_id);
-          }
+          // Do NOT auto-apply the research-suggested board. The agent may
+          // recommend `handoff.target_board_id`, but the user must explicitly
+          // select/confirm a board for the current project in the IDE.
           if (startAgent) {
             const pending = (handoff?.todos || [])
               .filter((todo: any) => todo.status !== "completed")
@@ -2662,10 +2734,12 @@
                   onclick={handleOpenFolder}
                 >
                   <div style="display: flex; align-items: center; gap: 8px;">
-                    {#if projectActionPending}<Loader size="sm" />{:else}<FolderOpen
-                      size={13}
-                      style="color: var(--accent-violet);"
-                    />{/if}
+                    {#if projectActionPending}<Loader
+                        size="sm"
+                      />{:else}<FolderOpen
+                        size={13}
+                        style="color: var(--accent-violet);"
+                      />{/if}
                     <span>Open Folder...</span>
                   </div>
                   <span class="shortcut-tag">Ctrl+O</span>
@@ -2674,7 +2748,11 @@
                 <button
                   type="button"
                   class="quick-access-item"
-                  onclick={() => actions.setShowWelcomeScreen(true)}
+                  onclick={() =>
+                    workspaceStore.update((s) => ({
+                      ...s,
+                      showWelcomeScreen: true,
+                    }))}
                 >
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <Blocks size={13} style="color: var(--accent-violet);" />
@@ -2709,12 +2787,18 @@
                         class="quick-access-item"
                         style="padding: 4px 8px; font-size: 0.7rem; justify-content: flex-start; gap: 6px;"
                         disabled={projectActionPending}
-                        onclick={() => runProjectAction(async () => {
-                          await actions.loadProject(project.id);
-                          recentProjectsExpanded = false;
-                        })}
+                        onclick={() =>
+                          runProjectAction(async () => {
+                            await actions.loadProject(project.id);
+                            recentProjectsExpanded = false;
+                          })}
                       >
-                        {#if projectActionPending}<Loader size="sm" />{:else}<Cpu size={11} style="color: var(--text-dark);" />{/if}
+                        {#if projectActionPending}<Loader
+                            size="sm"
+                          />{:else}<Cpu
+                            size={11}
+                            style="color: var(--text-dark);"
+                          />{/if}
                         <span
                           style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                           >{project.name}</span
@@ -3294,13 +3378,19 @@
                       bind:value={boardSearchQuery}
                     />
                     <div class="custom-board-inline">
-                      <select class="config-select" bind:value={boardManufacturerFilter}>
+                      <select
+                        class="config-select"
+                        bind:value={boardManufacturerFilter}
+                      >
                         <option value="">All manufacturers</option>
                         {#each boardManufacturers as manufacturer}
                           <option value={manufacturer}>{manufacturer}</option>
                         {/each}
                       </select>
-                      <select class="config-select" bind:value={boardFamilyFilter}>
+                      <select
+                        class="config-select"
+                        bind:value={boardFamilyFilter}
+                      >
                         <option value="">All families</option>
                         {#each boardFamilies as family}
                           <option value={family}>{family}</option>
@@ -3312,12 +3402,20 @@
                     class="config-select"
                     value={$workspaceStore.selectedBoard}
                     onchange={(e) =>
-                      actions.setSelectedBoard(e.currentTarget.value as any)}
+                      actions.setSelectedBoard(
+                        e.currentTarget.value as any,
+                        true,
+                      )}
                   >
+                    <option value="">None</option>
                     {#each groupedBoards as [family, boards]}
                       <optgroup label={family}>
                         {#each boards as board}
-                          <option value={board.id}>{board.label}{board.supported === false ? " (catalog only)" : ""}</option>
+                          <option value={board.id}
+                            >{board.label}{board.supported === false
+                              ? " (catalog only)"
+                              : ""}</option
+                          >
                         {/each}
                       </optgroup>
                     {/each}
@@ -4189,27 +4287,33 @@
                         {/if}
                         <div>
                           <small>Agent LLM calls</small><strong
-                            >{quota.agentLlmCallsRemaining} / {quota.agentLlmCallLimit} left</strong
+                            >{quota.agentLlmCallsRemaining} / {quota.agentLlmCallLimit}
+                            left</strong
                           >
                         </div>
                         <div>
                           <small>Agent searches</small><strong
-                            >{quota.agentSearchCallsRemaining} / {quota.agentSearchCallLimit} left</strong
+                            >{quota.agentSearchCallsRemaining} / {quota.agentSearchCallLimit}
+                            left</strong
                           >
                         </div>
                         <div>
                           <small>Agent input tokens</small><strong
-                            >{formatTokenCount(quota.agentInputTokensRemaining)} left</strong
+                            >{formatTokenCount(quota.agentInputTokensRemaining)}
+                            left</strong
                           >
                         </div>
                         <div>
                           <small>Agent output tokens</small><strong
-                            >{formatTokenCount(quota.agentOutputTokensRemaining)} left</strong
+                            >{formatTokenCount(
+                              quota.agentOutputTokensRemaining,
+                            )} left</strong
                           >
                         </div>
                         <div>
                           <small>Concurrent requests</small><strong
-                            >{quota.concurrentRemaining} / {quota.concurrentLimit} free</strong
+                            >{quota.concurrentRemaining} / {quota.concurrentLimit}
+                            free</strong
                           >
                         </div>
                         <div>
@@ -5345,8 +5449,18 @@
                           inputPromptModal.value.trim(),
                           "Created from IDE",
                           null,
-                          $workspaceStore.selectedBoard || null,
+                          null,
                         );
+                        // Clear any global board selection before opening this new project.
+                        workspaceStore.update((s) => ({
+                          ...s,
+                          selectedBoard: "",
+                          selectedBoardInfo: null,
+                        }));
+                        try {
+                          localStorage.removeItem("selectedBoard");
+                          localStorage.removeItem("selectedBoardInfo");
+                        } catch {}
                         await actions.loadProject(project.id);
                         await actions.loadProjects();
                         actions.setActiveSidebarTab("explorer");
@@ -5393,8 +5507,18 @@
                       inputPromptModal.value.trim(),
                       "Created from IDE",
                       null,
-                      $workspaceStore.selectedBoard || null,
+                      null,
                     );
+                    // Clear any global board selection before opening this new project.
+                    workspaceStore.update((s) => ({
+                      ...s,
+                      selectedBoard: "",
+                      selectedBoardInfo: null,
+                    }));
+                    try {
+                      localStorage.removeItem("selectedBoard");
+                      localStorage.removeItem("selectedBoardInfo");
+                    } catch {}
                     await actions.loadProject(project.id);
                     await actions.loadProjects();
                     actions.setActiveSidebarTab("explorer");
@@ -5552,7 +5676,11 @@
     display: grid;
     place-items: center;
     border-radius: 5px;
-    background: linear-gradient(135deg, var(--accent-violet), var(--accent-cyan));
+    background: linear-gradient(
+      135deg,
+      var(--accent-violet),
+      var(--accent-cyan)
+    );
     color: white;
     font-size: 0.65rem;
     font-weight: 750;

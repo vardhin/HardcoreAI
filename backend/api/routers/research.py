@@ -103,8 +103,11 @@ def _research_board_context(project) -> str:
 def _load_state_with_project_board(project_id: str, project) -> dict[str, Any]:
     """Keep a project's configured board available to Research across reloads."""
     state = load_research_state(project_id)
-    if not state.get("target_board_id"):
-        state["target_board_id"] = project.board_id
+    # Do not auto-populate `target_board_id` here. Research suggestions must
+    # be advisory and only applied when the user explicitly accepts them.
+    # Preserve existing board_selection metadata for visibility but avoid
+    # forcing a suggested target onto the UI by default.
+    if not state.get("board_selection"):
         state["board_selection"] = {
             **(state.get("board_selection") or {}),
             "selected_board_id": project.board_id,
@@ -265,7 +268,23 @@ async def _discover_research_components(
 def get_research_state(project_id: str, user_id: str = Depends(get_current_user_id)) -> dict[str, Any]:
     with db_session(user_id) as session:
         project = get_project_or_404(session, project_id, user_id)
-        return _load_state_with_project_board(project_id, project)
+        # Load the on-disk state but avoid returning a suggested `target_board_id`
+        # that merely reflects the project's configured board. Suggestions must
+        # be advisory and only surfaced when explicitly produced by a research
+        # run or when the user has accepted them.
+        state = load_research_state(project_id)
+        # Ensure callers can still see the project configuration metadata.
+        state.setdefault("board_selection", {})
+        state["board_selection"] = {
+            **(state.get("board_selection") or {}),
+            "selected_board_id": project.board_id,
+            "source": state.get("board_selection", {}).get("source", "project_configuration"),
+        }
+        out = normalize_research_state(state)
+        # Hide advisory `target_board_id` when it's only the project default.
+        if out.get("board_selection", {}).get("source") == "project_configuration":
+            out["target_board_id"] = None
+        return {"state": out, "context": _context_or_none(out, out.get("active_context_id"))}
 
 
 @router.post("/contexts")
@@ -358,6 +377,26 @@ async def ideate(project_id: str, payload: IdeateRequest, user_id: str = Depends
         goal=combined_goal,
         preferred_ids=preferred_ids,
     )
+    # Suggest a target board based on the research text and current selections.
+    try:
+        from services.board_selection import select_board_for_plan
+
+        decision = select_board_for_plan(plan=combined_goal, components=state.get("selected_components") or [], current_board_id=project.board_id)
+        state["board_selection"] = decision
+        # Apply the research-selected board to the real project so the
+        # project's configured target reflects the AI decision immediately.
+        try:
+            board = _apply_research_target_board(session, project, state.get("selected_components") or [], state)
+            state["target_board_id"] = board.id
+            # Persist the project change now so callers (UI) can reload projects
+            # and observe the updated project.board_id.
+            session.commit()
+        except Exception:
+            # Non-fatal: leave the advisory suggestion in state if apply fails.
+            state["target_board_id"] = decision.get("selected_board_id")
+    except Exception:
+        # Non-fatal: research continues even if board suggestion fails.
+        pass
     summary = await summarize_with_deepseek_or_fallback(
         idea=payload.idea,
         recommendations=recommendations,
@@ -378,7 +417,12 @@ async def ideate(project_id: str, payload: IdeateRequest, user_id: str = Depends
     context["recommendations"] = recommendations
     context["updated_at"] = datetime.now(timezone.utc).isoformat()
     path = save_research_state(project_id, state)
-    return {"state": normalize_research_state(state), "context": context, "path": str(path)}
+    resp = {"state": normalize_research_state(state), "context": context, "path": str(path)}
+    try:
+        resp["applied_board_id"] = project.board_id
+    except Exception:
+        pass
+    return resp
 
 
 def _research_sse(event: dict[str, Any]) -> str:
@@ -408,6 +452,19 @@ async def ideate_stream(
     prior_messages = list(context.get("messages") or [])
     combined_goal = research_goal_text(state, payload.idea)
     recommendations = recommend_components(catalogue=catalogue, goal=combined_goal)
+    # Suggest a target board early for streamed ideation responses.
+    try:
+        from services.board_selection import select_board_for_plan
+        decision = select_board_for_plan(plan=combined_goal, components=state.get("selected_components") or [], current_board_id=project.board_id)
+        state["board_selection"] = decision
+        try:
+            board = _apply_research_target_board(session, project, state.get("selected_components") or [], state)
+            state["target_board_id"] = board.id
+            session.commit()
+        except Exception:
+            state["target_board_id"] = decision.get("selected_board_id")
+    except Exception:
+        pass
     stage = state.get("stage", "ideation")
 
     async def events():
@@ -483,13 +540,21 @@ async def ideate_stream(
         context["recommendations"] = current_recommendations
         context["updated_at"] = datetime.now(timezone.utc).isoformat()
         path = save_research_state(project_id, state)
-        yield _research_sse({
+        # Include the applied project board id (if any) so the frontend can
+        # update its selectedBoard/store immediately without requiring the
+        # user to manually accept the suggestion.
+        done_event = {
             "type": "done",
             "state": normalize_research_state(state),
             "context": context,
             "path": str(path),
             "degraded": degraded,
-        })
+        }
+        try:
+            done_event["applied_board_id"] = project.board_id
+        except Exception:
+            pass
+        yield _research_sse(done_event)
 
     return StreamingResponse(
         events(),
@@ -871,11 +936,16 @@ async def stream_phase3_verification(
         state["stage"] = "final_review"
         save_research_state(project_id, state)
         background_tasks.add_task(_sync_project_files, project_id, user_id)
-        yield _research_sse({
+        done_event = {
             "type": "done",
             "state": normalize_research_state(state),
             "artifacts": ["components.md", "verification.md", "pin-diagram.md", "connection-diagram.md", "configuration.md", "pin-config.json", "final-review.md"],
-        })
+        }
+        try:
+            done_event["applied_board_id"] = board.id
+        except Exception:
+            pass
+        yield _research_sse(done_event)
 
     return StreamingResponse(
         events(),
