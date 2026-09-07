@@ -10,6 +10,15 @@ from services.hardware import (
 from services.projects import default_files
 
 
+def test_boardless_project_files_do_not_default_to_blue_pill():
+    files = dict((path, content) for path, _language, content in default_files("Research first", None))
+
+    assert "platformio.ini" not in files
+    assert "src/main.c" not in files
+    assert "src/main.cpp" not in files
+    assert "README.md" in files
+
+
 def _project_session(tmp_path):
     engine = create_engine("sqlite://")
     SQLModel.metadata.create_all(engine)

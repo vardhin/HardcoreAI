@@ -102,7 +102,24 @@ def default_files(project_name: str, board_id: str | None = None) -> list[tuple[
     from boards.registry import registry
     from boards.device import uses_arduino_framework, uses_espidf_framework
     device = registry.get(board_id) if board_id else None
-    device = device or registry.default()
+    if device is None:
+        # A project created before board selection must remain board-neutral.
+        # Do not generate firmware or platformio.ini for the registry's legacy
+        # Blue Pill fallback; those files are created when a board is applied.
+        readme = (
+            f"# {project_name}\n\nHardware notes and firmware plan.\n\n"
+            "## Workflow\n\n"
+            "1. Describe the project in **Research**.\n"
+            "2. Review and apply a suggested target board.\n"
+            "3. Select components and generate firmware.\n"
+        )
+        gitignore = (
+            "# Build artifacts\n.pio/\n.pioenvs/\n.piolibdeps/\n.platformio/\n"
+            "build/\n*.o\n*.elf\n*.bin\n*.hex\n\n"
+            "# Secrets / local config\n.env\n.env.*\n!.env.example\n\n"
+            "# Editor / OS\n.vscode/\n.DS_Store\n"
+        )
+        return [("README.md", "markdown", readme), (".gitignore", "ignore", gitignore)]
 
     if uses_arduino_framework(device):
         main_path, main_lang = "src/main.cpp", "cpp"

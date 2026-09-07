@@ -581,7 +581,7 @@ export const workspaceStore = writable({
   selectedBoard: getInitialSelectedBoard() as string,
   selectedBoardInfo: null as BoardMeta | null,
   boardCatalog: [] as BoardMeta[],
-  selectedProbe: getInitialSelectedProbe() as "ST-Link V2" | "J-Link" | "CMSIS-DAP",
+  selectedProbe: getInitialSelectedProbe() as "ST-Link V2" | "J-Link" | "CMSIS-DAP" | null,
   toolchainPath: getInitialToolchainPath(),
 
   // ── NEW FEATURE STATE ──

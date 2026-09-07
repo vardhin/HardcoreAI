@@ -178,12 +178,6 @@ def normalize_research_state(state: dict[str, Any]) -> dict[str, Any]:
     if not any(item["id"] == active_id for item in contexts):
         active_id = contexts[0]["id"] if contexts else None
     normalized["active_context_id"] = active_id
-    # Do not expose a persisted or project-default `target_board_id` to the
-    # client as an unsolicited suggestion. Research suggestions are advisory
-    # and must be surfaced via explicit agent output or when the user accepts
-    # them. Always hide the `target_board_id` value in normalized state that
-    # will be returned to the frontend or streamed over SSE.
-    normalized["target_board_id"] = None
     return normalized
 
 

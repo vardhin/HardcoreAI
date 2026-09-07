@@ -1,6 +1,29 @@
 from services.board_selection import infer_board_requirements, select_board_for_plan
 
 
+def test_greeting_without_current_board_does_not_invent_target():
+    decision = select_board_for_plan(
+        plan="hi",
+        components=[],
+        current_board_id=None,
+    )
+
+    assert decision["selected_board_id"] is None
+    assert decision["confidence"] == "insufficient"
+    assert decision["source"] == "insufficient_context"
+
+
+def test_greeting_does_not_turn_current_board_into_ai_suggestion():
+    decision = select_board_for_plan(
+        plan="hi",
+        components=[],
+        current_board_id="bluepill_f103c8",
+    )
+
+    assert decision["selected_board_id"] == "bluepill_f103c8"
+    assert decision["source"] == "current_project"
+
+
 def test_explicit_board_name_wins_across_registry():
     decision = select_board_for_plan(
         plan="Use the ESP32-S3-DevKitC-1 with Arduino and native USB.",

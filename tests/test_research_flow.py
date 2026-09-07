@@ -185,6 +185,15 @@ def test_multiple_research_contexts_produce_one_deduplicated_decision():
     assert selected_component_ids(state) == ["ssd1306", "esp32", "relay"]
 
 
+def test_normalization_preserves_a_real_advisory_board_suggestion():
+    state = normalize_research_state({
+        "target_board_id": "esp32dev",
+        "board_selection": {"source": "requirements"},
+    })
+
+    assert state["target_board_id"] == "esp32dev"
+
+
 def test_confirmed_esp32_controller_resolves_project_target():
     assert selected_target_board_id([
         {

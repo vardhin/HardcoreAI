@@ -256,8 +256,52 @@ def select_board_for_plan(
     requirements = infer_board_requirements(plan, components)
     explicit_component_board = selected_target_board_id(components)
     text = plan or ""
+    compact_text = _normal(text)
+    devices = registry.list()
+    explicit_text_board = next(
+        (
+            device.id
+            for device in devices
+            if any(
+                len(_normal(identity)) >= 4 and _normal(identity) in compact_text
+                for identity in (device.id, device.label, device.mcu, device.family)
+            )
+        ),
+        None,
+    )
+    has_requirements = bool(
+        explicit_component_board
+        or explicit_text_board
+        or requirements["connectivity"]
+        or requirements["protocols"]
+        or requirements["minimum_gpio"]
+        or requirements["needs_analog"]
+        or requirements["needs_pwm"]
+        or requirements["framework"]
+    )
+    if not has_requirements:
+        current = registry.get(current_board_id) if current_board_id else None
+        selected = (
+            {
+                "board": current.model_dump(),
+                "score": 0,
+                "reasons": ["Keeps the current target; the research text has no board requirements."],
+                "warnings": [],
+            }
+            if current
+            else None
+        )
+        return {
+            "selected_board_id": current.id if current else None,
+            "selected": selected,
+            "candidates": [selected] if selected else [],
+            "requirements": requirements,
+            "confidence": "low" if current else "insufficient",
+            "registry_size": len(devices),
+            "source": "current_project" if current else "insufficient_context",
+        }
     ranked = []
-    for device in registry.list():
+    for device in devices:
         score, reasons, warnings = _rank_device(
             device,
             text=text,
@@ -287,4 +331,5 @@ def select_board_for_plan(
         "requirements": requirements,
         "confidence": confidence,
         "registry_size": len(ranked),
+        "source": "explicit" if explicit_component_board or explicit_text_board else "requirements",
     }

@@ -96,8 +96,8 @@ class AdvanceRequest(BaseModel):
 
 def _research_board_context(project) -> str:
     """Describe the project-configured target without starting a second board flow."""
-    device = registry.get(project.board_id) or registry.default()
-    return f"{device.label} ({device.id})"
+    device = registry.get(project.board_id) if project.board_id else None
+    return f"{device.label} ({device.id})" if device else "No target board has been selected yet."
 
 
 def _load_state_with_project_board(project_id: str, project) -> dict[str, Any]:
@@ -115,6 +115,26 @@ def _load_state_with_project_board(project_id: str, project) -> dict[str, Any]:
         }
         save_research_state(project_id, state)
     return state
+
+
+def _update_advisory_board_decision(state: dict[str, Any], project, plan: str) -> None:
+    """Refresh the visible recommendation without changing project files."""
+    from services.board_selection import select_board_for_plan
+
+    decision = select_board_for_plan(
+        plan=plan,
+        components=state.get("selected_components") or [],
+        current_board_id=project.board_id,
+    )
+    state["board_selection"] = decision
+    board_id = (
+        decision.get("selected_board_id")
+        if decision.get("source") in {"explicit", "requirements"}
+        else None
+    )
+    board = registry.get(board_id) if board_id else None
+    state["target_board_id"] = board.id if board else None
+    state["target_board_label"] = board.label if board else None
 
 
 def _upsert_markdown(session, project, path: str, content: str, language: str = "markdown") -> None:
@@ -135,7 +155,11 @@ def _apply_research_target_board(
     selected: list[dict[str, Any]],
     state: dict[str, Any],
 ):
-    """Select from the full registry and align the project/build target."""
+    """Apply an explicit controller choice, or retain an existing target.
+
+    Ranked recommendations remain advisory; this helper must never turn a
+    sensor/component selection into an implicit project-board change.
+    """
     from services.board_selection import select_board_for_plan
 
     decision = select_board_for_plan(
@@ -144,14 +168,10 @@ def _apply_research_target_board(
         current_board_id=project.board_id,
     )
     state["board_selection"] = decision
-    board_id = (
-        decision.get("selected_board_id")
-        or selected_target_board_id(selected)
-        or project.board_id
-    )
+    board_id = selected_target_board_id(selected) or project.board_id
     device = registry.get(board_id)
     if not device:
-        return registry.get(project.board_id) or registry.default()
+        return None
 
     # Always reconcile the real root file, even when the selected board did
     # not change. This repairs projects created before platformio.ini became a
@@ -284,7 +304,7 @@ def get_research_state(project_id: str, user_id: str = Depends(get_current_user_
         # Hide advisory `target_board_id` when it's only the project default.
         if out.get("board_selection", {}).get("source") == "project_configuration":
             out["target_board_id"] = None
-        return {"state": out, "context": _context_or_none(out, out.get("active_context_id"))}
+        return out
 
 
 @router.post("/contexts")
@@ -377,23 +397,17 @@ async def ideate(project_id: str, payload: IdeateRequest, user_id: str = Depends
         goal=combined_goal,
         preferred_ids=preferred_ids,
     )
-    # Suggest a target board based on the research text and current selections.
+    # Compute an advisory suggestion. Applying it is an explicit UI action.
     try:
         from services.board_selection import select_board_for_plan
 
         decision = select_board_for_plan(plan=combined_goal, components=state.get("selected_components") or [], current_board_id=project.board_id)
         state["board_selection"] = decision
-        # Apply the research-selected board to the real project so the
-        # project's configured target reflects the AI decision immediately.
-        try:
-            board = _apply_research_target_board(session, project, state.get("selected_components") or [], state)
-            state["target_board_id"] = board.id
-            # Persist the project change now so callers (UI) can reload projects
-            # and observe the updated project.board_id.
-            session.commit()
-        except Exception:
-            # Non-fatal: leave the advisory suggestion in state if apply fails.
-            state["target_board_id"] = decision.get("selected_board_id")
+        state["target_board_id"] = (
+            decision.get("selected_board_id")
+            if decision.get("source") in {"explicit", "requirements"}
+            else None
+        )
     except Exception:
         # Non-fatal: research continues even if board suggestion fails.
         pass
@@ -416,13 +430,9 @@ async def ideate(project_id: str, payload: IdeateRequest, user_id: str = Depends
     context["summary"] = summary
     context["recommendations"] = recommendations
     context["updated_at"] = datetime.now(timezone.utc).isoformat()
+    _update_advisory_board_decision(state, project, research_goal_text(state))
     path = save_research_state(project_id, state)
-    resp = {"state": normalize_research_state(state), "context": context, "path": str(path)}
-    try:
-        resp["applied_board_id"] = project.board_id
-    except Exception:
-        pass
-    return resp
+    return {"state": normalize_research_state(state), "context": context, "path": str(path)}
 
 
 def _research_sse(event: dict[str, Any]) -> str:
@@ -452,17 +462,16 @@ async def ideate_stream(
     prior_messages = list(context.get("messages") or [])
     combined_goal = research_goal_text(state, payload.idea)
     recommendations = recommend_components(catalogue=catalogue, goal=combined_goal)
-    # Suggest a target board early for streamed ideation responses.
+    # Suggest a target board early, but never mutate the project from chat.
     try:
         from services.board_selection import select_board_for_plan
         decision = select_board_for_plan(plan=combined_goal, components=state.get("selected_components") or [], current_board_id=project.board_id)
         state["board_selection"] = decision
-        try:
-            board = _apply_research_target_board(session, project, state.get("selected_components") or [], state)
-            state["target_board_id"] = board.id
-            session.commit()
-        except Exception:
-            state["target_board_id"] = decision.get("selected_board_id")
+        state["target_board_id"] = (
+            decision.get("selected_board_id")
+            if decision.get("source") in {"explicit", "requirements"}
+            else None
+        )
     except Exception:
         pass
     stage = state.get("stage", "ideation")
@@ -539,10 +548,8 @@ async def ideate_stream(
         context["summary"] = summary
         context["recommendations"] = current_recommendations
         context["updated_at"] = datetime.now(timezone.utc).isoformat()
+        _update_advisory_board_decision(state, project, research_goal_text(state))
         path = save_research_state(project_id, state)
-        # Include the applied project board id (if any) so the frontend can
-        # update its selectedBoard/store immediately without requiring the
-        # user to manually accept the suggestion.
         done_event = {
             "type": "done",
             "state": normalize_research_state(state),
@@ -550,10 +557,6 @@ async def ideate_stream(
             "path": str(path),
             "degraded": degraded,
         }
-        try:
-            done_event["applied_board_id"] = project.board_id
-        except Exception:
-            pass
         yield _research_sse(done_event)
 
     return StreamingResponse(
@@ -595,7 +598,12 @@ def select_components(project_id: str, payload: SelectRequest, user_id: str = De
         # and coding chat keep showing the pre-research board for the entire
         # research conversation, which is the "wrong board wins" bug.
         board = _apply_research_target_board(session, project, selected, state)
-        state["target_board_id"] = board.id
+        decision = state.get("board_selection") or {}
+        state["target_board_id"] = board.id if board else (
+            decision.get("selected_board_id")
+            if decision.get("source") in {"explicit", "requirements"}
+            else None
+        )
         session.commit()
 
         component_context = resolve_component_context(
@@ -639,6 +647,8 @@ async def stream_phase3_verification(
         if not selected:
             raise HTTPException(status_code=422, detail="Select at least one component before starting Phase 3.")
         board = _apply_research_target_board(session, project, selected, state)
+        if board is None:
+            raise HTTPException(status_code=422, detail="Apply a suggested target board before starting Phase 3.")
         state["target_board_id"] = board.id
         session.commit()
         project_name = project.name
@@ -1070,6 +1080,8 @@ async def advance_research_workflow(
             if not selected:
                 raise HTTPException(status_code=422, detail="Select at least one component before confirming.")
             board = _apply_research_target_board(session, project, selected, state)
+            if board is None:
+                raise HTTPException(status_code=422, detail="Apply a suggested target board before confirming components.")
             state["target_board_id"] = board.id
             state["selected_components"] = selected
             state["decision_notes"] = payload.notes.strip()

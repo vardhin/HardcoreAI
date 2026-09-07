@@ -108,10 +108,6 @@
   let newProjectName = "";
   let newProjectDescription = "";
   let newProjectBoardId = "";
-  let newProjectBoardSearch = "";
-  let newProjectBoardPickerOpen = false;
-  let boardTriggerEl: HTMLButtonElement | null = null;
-  let boardMenuStyle = "";
   let aiInput = "";
   let serialInput = "";
   let selectedPeripheral = "Core Registers";
@@ -131,67 +127,6 @@
   // user must explicitly choose a board when creating a project. This keeps
   // project creation independent and avoids accidental inheritance of the
   // previously-selected board.
-  $: newProjectBoard =
-    $workspaceStore.boardCatalog.find(
-      (board) => board.id === newProjectBoardId,
-    ) || null;
-  $: newProjectBoardOptions = (() => {
-    const query = newProjectBoardSearch.trim().toLowerCase();
-    if (!query) return [];
-    return $workspaceStore.boardCatalog
-      .filter(
-        (board) =>
-          !query ||
-          board.label.toLowerCase().includes(query) ||
-          board.id.toLowerCase().includes(query) ||
-          (board.mcu || "").toLowerCase().includes(query) ||
-          (board.family || "").toLowerCase().includes(query),
-      )
-      .slice(0, 24);
-  })();
-
-  function chooseNewProjectBoard(boardId: string) {
-    newProjectBoardId = boardId;
-    newProjectBoardSearch = "";
-    newProjectBoardPickerOpen = false;
-  }
-
-  // The menu is fixed-positioned and placed via JS rather than plain CSS
-  // `position: absolute`, because the picker lives inside ancestors
-  // (.welcome-screen / .welcome-column) that set `overflow: hidden` for
-  // their own layout reasons — an absolutely positioned dropdown gets
-  // hard-clipped by that boundary instead of scrolling. Fixed positioning
-  // escapes the clip; we also flip it upward when there isn't room below.
-  async function toggleBoardMenu() {
-    newProjectBoardPickerOpen = !newProjectBoardPickerOpen;
-    if (newProjectBoardPickerOpen) {
-      await tick();
-      positionBoardMenu();
-    }
-  }
-
-  function positionBoardMenu() {
-    if (!boardTriggerEl) return;
-    const rect = boardTriggerEl.getBoundingClientRect();
-    const viewportHeight = window.innerHeight;
-    const gap = 6;
-    const spaceBelow = viewportHeight - rect.bottom - gap - 12;
-    const spaceAbove = rect.top - gap - 12;
-    const openUpward = spaceBelow < 180 && spaceAbove > spaceBelow;
-    const maxHeight = Math.max(
-      120,
-      Math.min(360, openUpward ? spaceAbove : spaceBelow),
-    );
-    boardMenuStyle = [
-      `left:${rect.left}px`,
-      `width:${rect.width}px`,
-      `max-height:${maxHeight}px`,
-      openUpward
-        ? `bottom:${viewportHeight - rect.top + gap}px`
-        : `top:${rect.bottom + gap}px`,
-    ].join("; ");
-  }
-
   // Multi-board target picker: group the flat board catalog by family
   // (STM32F1, STM32H7, ...) so the dropdown stays usable now that it spans
   // 15+ STM32 families instead of a handful of boards.
@@ -1434,10 +1369,6 @@
     node.select();
   }
 
-  $: activeProject = $workspaceStore.projectsList.find(
-    (p) => p.id === $workspaceStore.activeProjectId,
-  );
-
   // Resize and Layout management
   async function triggerEditorLayout() {
     await tick();
@@ -1673,9 +1604,6 @@
   onmousemove={handleMouseMove}
   onmouseup={handleMouseUp}
   onkeydown={handleKeyDown}
-  onresize={() => {
-    if (newProjectBoardPickerOpen) positionBoardMenu();
-  }}
   onclick={(e) => {
     const target = e.target as HTMLElement;
     if (showViewDropdown && !target.closest(".view-menu-container")) {
@@ -1683,9 +1611,6 @@
     }
     if (showAccountMenu && !target.closest(".account-menu-container")) {
       showAccountMenu = false;
-    }
-    if (newProjectBoardPickerOpen && !target.closest(".project-board-picker")) {
-      newProjectBoardPickerOpen = false;
     }
   }}
 />
