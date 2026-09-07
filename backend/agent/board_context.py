@@ -288,7 +288,10 @@ def get_device_for_project(project_id: str, session) -> Device:
     """Thin re-export so solver.py doesn't need to import boards.device_manager
     directly — keeps the agent package's dependency surface small."""
     from boards import device_manager
-    return device_manager.for_project(project_id, session)
+    # For agent runs we must NOT assume a default board when the project has
+    # no explicit `board_id`. Returning None lets the agent ask the user to
+    # confirm a target instead of silently targeting the Blue Pill fallback.
+    return device_manager._lookup(project_id, session)
 
 
 _ARDUINO_BOARD_NOTES: dict[str, dict[str, str]] = {
@@ -408,6 +411,27 @@ def build_board_context(device: Device) -> str:
     """Renders the board-specific block that replaces solver.py's old
     hardcoded RULE 1 / RULE 3.4 Blue-Pill text."""
     from boards.device import uses_arduino_framework, uses_espidf_framework
+    # If no device is provided, instruct the agent to request project details
+    # and recommend a suitable board. Keep the scope firmware-only.
+    if device is None:
+        return """\
+══════════════════════════════════════════════════════════════
+RULE 1 — BOARD: None selected (project has no target board yet)
+══════════════════════════════════════════════════════════════
+No target board is currently selected for this project. Do NOT assume a
+board. First, ask the user for a concise Project Overview and the list of
+Components (sensors, actuators, modules, interfaces) the firmware must
+support. Use only component details necessary for firmware decisions.
+
+After you fully understand the project overview and components, RECOMMEND
+one or more suitable target boards (id + brief rationale). When recommending
+boards, prefer those known in the project's board catalog and explain the
+firmware-focused reasons (available UART/SPI/I2C, flash/RAM, core, framework).
+
+Do NOT discuss PCB layout, enclosure, packaging, manufacturing, or other
+physical hardware-design topics — remain focused on firmware, drivers,
+interfaces, and configuration.
+"""
     if uses_arduino_framework(device):
         return _build_arduino_board_context(device)
     if uses_espidf_framework(device):

@@ -414,13 +414,8 @@ const getInitialShowWelcomeScreen = () => {
 };
 
 const getInitialSelectedBoard = () => {
-  if (!isBrowser) return "bluepill_f103c8";
-  try {
-    const val = localStorage.getItem("selectedBoard");
-    return val ? JSON.parse(val) : "bluepill_f103c8";
-  } catch {
-    return "bluepill_f103c8";
-  }
+  // No global selected board by default — board selection is project-scoped.
+  return "";
 };
 
 const getInitialSelectedProbe = () => {
@@ -633,7 +628,8 @@ export const actions = {
       workspaceStore.update(s => ({
         ...s,
         boardCatalog: boards,
-        selectedBoardInfo: boards.find((b: BoardMeta) => b.id === s.selectedBoard) || s.selectedBoardInfo || boards[0] || null,
+        // Only set selectedBoardInfo from the catalog when a board id is selected.
+        selectedBoardInfo: s.selectedBoard ? (boards.find((b: BoardMeta) => b.id === s.selectedBoard) || s.selectedBoardInfo || null) : (s.selectedBoardInfo || null),
       }));
     } catch (e) {
       console.warn("Failed to load board catalog", e);
@@ -647,14 +643,20 @@ export const actions = {
   addCustomBoard: async (payload: { id: string; mcu: string; label?: string; arch?: string }) => {
     const board = await api.addCustomBoard(payload);
     await actions.loadBoardCatalog();
-    await actions.setSelectedBoard(board.id);
+    // Select the newly added board in the UI but do NOT persist it to the
+    // current project automatically — the user must explicitly apply a
+    // suggested/selected board to a project.
+    await actions.setSelectedBoard(board.id, false);
     return board;
   },
   importStm32Metadata: async () => {
     const result = await api.importStm32Metadata();
     let selectedBoard: string | null = null;
     workspaceStore.subscribe(s => { selectedBoard = s.selectedBoard; })();
-    if (selectedBoard) await actions.setSelectedBoard(selectedBoard);
+    // Do not implicitly persist an existing global selection onto a project
+    // when importing STM32 metadata — keep selection UI-only unless the
+    // user explicitly applies it.
+    if (selectedBoard) await actions.setSelectedBoard(selectedBoard, false);
     return result;
   },
   loadProjects: async () => {
@@ -753,7 +755,7 @@ export const actions = {
             {
               id: "default-greeting",
               sender: "ai",
-              text: "Hello! I am your HARDCOREAI Copilot. I have loaded context for your board target, SVD registers, and your current PlatformIO configuration. \n\nHow can I help you write or debug firmware today?",
+              text: "Hello! I am your HARDCOREAI Copilot. Describe your project overview and components to get started — I will recommend a suitable target board and then help generate firmware.",
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             }
           ];
@@ -762,6 +764,7 @@ export const actions = {
         console.error("Failed to load chat history", err);
       }
 
+      console.debug("actions.loadProject(): loading project", id);
       workspaceStore.update(s => {
         const filePaths = files.map((f: any) => "/" + String(f.path || "").replace(/^\/+/, ""));
 
@@ -778,7 +781,8 @@ export const actions = {
         }
 
         const project = s.projectsList.find((p: any) => String(p.id) === String(id));
-        const boardId = project?.board_id || "bluepill_f103c8";
+        const boardId = project?.board_id || "";
+        console.debug("actions.loadProject(): project board_id", boardId, "for project", id);
         const savedPins = getSavedPins(id);
 
         return {
@@ -818,9 +822,14 @@ export const actions = {
       if (!getSavedPins(id)) {
         try {
           const project = (() => { let p: any; workspaceStore.subscribe(s => { p = s.projectsList.find((x: any) => String(x.id) === String(id)); })(); return p; })();
-          const boardId = project?.board_id || "bluepill_f103c8";
-          const board = await api.getBoard(boardId);
-          workspaceStore.update(s => (s.activeProjectId === id ? { ...s, selectedBoardInfo: board, pins: buildPinsFromDevice(board) } : s));
+          const boardId = project?.board_id || "";
+          if (boardId) {
+            const board = await api.getBoard(boardId);
+            workspaceStore.update(s => (s.activeProjectId === id ? { ...s, selectedBoardInfo: board, pins: buildPinsFromDevice(board) } : s));
+          } else {
+            // No board selected for this project yet — leave pins as defaults and clear selectedBoardInfo
+            workspaceStore.update(s => (s.activeProjectId === id ? { ...s, selectedBoardInfo: null } : s));
+          }
         } catch (e) {
           console.warn("Failed to load board pinout, keeping default pins", e);
         }
@@ -1361,7 +1370,11 @@ export const actions = {
   },
 
   setShowWelcomeScreen: (val: boolean) => {
-    workspaceStore.update(s => ({ ...s, showWelcomeScreen: val }));
+    // Toggle the welcome/project-creation screen. Previously this was a
+    // no-op because the welcome UI was removed; restore toggling so the
+    // app can surface the welcome flow after sign-in or when the user
+    // explicitly requests it.
+    workspaceStore.update(s => ({ ...s, showWelcomeScreen: Boolean(val) }));
   },
   setActiveSidebarTab: (tab: "explorer" | "search" | "git" | "debug" | "extensions" | "boards" | "rag") => {
     workspaceStore.update(s => ({ ...s, activeSidebarTab: tab }));
@@ -1371,11 +1384,11 @@ export const actions = {
       actions.loadGitLog();
     }
   },
-  setSelectedBoard: async (board: string) => {
+  setSelectedBoard: async (board: string, persist = false) => {
     let pid: string | null = null;
     workspaceStore.subscribe(s => { pid = s.activeProjectId; })();
-    workspaceStore.update(s => ({ ...s, selectedBoard: board }));
     try {
+      console.debug("actions.setSelectedBoard(): called with", board, "persist=", persist, "activeProject=", pid);
       const deviceInfo = await api.getBoard(board);
       // Auto-default the debug probe to whatever this specific board
       // actually uses (e.g. Arduino Zero's onboard EDBG -> CMSIS-DAP)
@@ -1388,13 +1401,19 @@ export const actions = {
       const impliedProbe = deviceInfo.openocd_interface
         ? _INTERFACE_CFG_TO_PROBE[deviceInfo.openocd_interface]
         : undefined;
+      // Update board metadata in the UI but do NOT set a global project
+      // selection unless a project is active and `persist` is true.
       workspaceStore.update(s => ({
         ...s,
         selectedBoardInfo: deviceInfo,
         pins: buildPinsFromDevice(deviceInfo),
         selectedProbe: impliedProbe ?? s.selectedProbe,
+        // only set selectedBoard when a project is active
+        selectedBoard: pid ? board : s.selectedBoard,
       }));
-      if (pid) {
+      if (pid && persist) {
+        // Persist the selection to the active project only when explicitly
+        // requested (persist=true).
         await api.setProjectBoard(pid, board);
         // Replace any open/editor copy of platformio.ini with the newly
         // generated target config. Otherwise a later autosave could put the
@@ -2322,10 +2341,10 @@ export const actions = {
 
   startDebugging: async () => {
     let pid: string | null = null;
-    let board: string = "bluepill_f103c8";
+    let board: string = "";
     workspaceStore.subscribe(s => {
       pid = s.activeProjectId;
-      board = s.selectedBoard || "bluepill_f103c8";
+      board = s.selectedBoard || "";
     })();
     if (!pid) return;
 
@@ -2549,7 +2568,8 @@ if (typeof window !== "undefined") {
       localStorage.setItem("showWelcomeScreen", JSON.stringify(s.showWelcomeScreen));
 
       // Global UI configurations
-      localStorage.setItem("selectedBoard", JSON.stringify(s.selectedBoard));
+      // Note: do NOT persist `selectedBoard` globally — board selection is
+      // project-scoped only. Persist probe and other UI settings instead.
       localStorage.setItem("selectedProbe", JSON.stringify(s.selectedProbe));
       localStorage.setItem("toolchainPath", JSON.stringify(s.toolchainPath));
       localStorage.setItem("activeSidebarTab", JSON.stringify(s.activeSidebarTab));

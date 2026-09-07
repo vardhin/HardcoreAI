@@ -78,13 +78,21 @@ def create_project(payload: ProjectCreate, user_id: str = Depends(get_current_us
         local_path.mkdir(parents=True, exist_ok=is_import)
 
         from boards.registry import registry
-        resolved_board_id = payload.board_id or registry.default().id
+        # Allow creating projects without an initial board selection. Keep
+        # `default_files` backwards-compatible by passing the optional
+        # board_id only when provided; when no board is selected, pass
+        # None so `default_files` does NOT fall back to the registry
+        # default and will therefore avoid generating a platformio.ini
+        # pre-configured for Blue Pill. Persist an empty string in the DB
+        # only for compatibility with older schemas that disallow NULL.
+        resolved_board_id_db = payload.board_id or ""
+        resolved_board_id_for_files = payload.board_id or None
         project = ProjectRow(
             name=project_name,
             description=payload.description.strip(),
             user_id=UUID(user_id),
             path=str(local_path),
-            board_id=resolved_board_id,
+            board_id=resolved_board_id_db,
         )
         session.add(project)
         session.commit()
@@ -94,7 +102,7 @@ def create_project(payload: ProjectCreate, user_id: str = Depends(get_current_us
             # Register whatever's actually on disk — don't touch existing files.
             _register_existing_files(session, project, local_path)
         else:
-            files = default_files(project.name, resolved_board_id)
+            files = default_files(project.name, resolved_board_id_for_files)
             for path, language, content in files:
                 session.add(CodeFileRow(project_id=project.id, path=path, language=language, content=content))
 

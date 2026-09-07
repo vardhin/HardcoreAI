@@ -959,17 +959,41 @@ class CodingToolbox(Toolbox):
         device = registry.get(board_id.strip())
         if not device:
             return f"ERROR: Unknown board '{board_id}'. Use list_supported_boards first."
-        with db_session(str(self.user_id)) as session:
-            configured, generated, _path = configure_project_environment(
-                str(self.project_id),
-                device.id,
-                session=session,
-            )
-            session.commit()
+        # Respect run-level auto-approve: when the agent is running in an
+        # interactive IDE session (auto_approve=False) we should not persist
+        # project-level configuration changes automatically. Instead return
+        # a suggestion and stage the platformio.ini in-memory so the user can
+        # review and accept it explicitly. When auto_approve is True the
+        # selection is applied immediately (for automated flows or research).
+        staged_generated = None
+        try:
+            with db_session(str(self.user_id)) as session:
+                # Generate the platformio.ini content but don't commit unless
+                # auto_approve is enabled.
+                configured, generated, _path = configure_project_environment(
+                    str(self.project_id),
+                    device.id,
+                    session=session,
+                )
+                staged_generated = generated
+                if getattr(self, "auto_approve", False):
+                    session.commit()
+        except Exception:
+            # If environment generation fails, still allow the agent to
+            # propose the board id as a suggestion.
+            configured = device
+
         self.target_board_id = device.id
-        self.files["platformio.ini"] = {"language": "ini", "content": generated}
-        deps = _get_lib_deps(generated)
-        return f"Selected {configured.label} ({configured.id}) and updated the root platformio.ini while preserving {len(deps)} library dependency/dependencies."
+        # Stage the generated platformio.ini in the agent's in-memory file set
+        # so the UI can show the exact changes proposed by the agent.
+        if staged_generated is not None:
+            self.files["platformio.ini"] = {"language": "ini", "content": staged_generated}
+
+        if getattr(self, "auto_approve", False):
+            deps = _get_lib_deps(staged_generated or "")
+            return f"Selected {configured.label} ({configured.id}) and updated the root platformio.ini while preserving {len(deps)} library dependency/dependencies."
+        # Interactive suggestion path — do not persist or commit.
+        return f"Suggested {device.label} ({device.id}) as the project target. Run the 'select_project_board' tool with auto-approve enabled or apply from the UI to persist this choice."
 
     @tool
     def detect_connected_board(self) -> str:

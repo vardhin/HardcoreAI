@@ -27,6 +27,12 @@
   let loading = false;
   let notice = "";
   let state: any = null;
+  // Only show the AI-suggested board banner after a research run produced
+  // the suggestion (or the user explicitly interacted). This prevents the
+  // UI from showing unsolicited suggestions on initial load.
+  let suggestionVisible = false;
+  // The user must explicitly reveal the suggestion before it is shown.
+  let revealedSuggestion = false;
   let selected = new Set<string>();
   let activeContextId = "";
   let pendingUser = "";
@@ -45,11 +51,18 @@
   onDestroy(() => window.clearInterval(phase3Clock));
 
   $: projectId = $workspaceStore.activeProjectId;
-  $: researchBoardLabel =
-    $workspaceStore.selectedBoardInfo?.label ||
-    $workspaceStore.selectedBoard ||
-    state?.target_board_id ||
-    "the configured project board";
+  // Prefer the project's explicit board (if set). If the project has no
+  // persisted board, do not display a suggested board here — suggestions
+  // are shown separately with explicit Apply/Dismiss actions.
+  $: currentProject =
+    $workspaceStore.projectsList?.find(
+      (p: any) => String(p.id) === String(projectId),
+    ) || null;
+  $: projectBoardId = currentProject?.board_id || null;
+  $: researchBoardLabel = projectBoardId
+    ? $workspaceStore.boardCatalog.find((b: any) => b.id === projectBoardId)
+        ?.label || projectBoardId
+    : "no board selected";
   $: provider = $workspaceStore.selectedProvider || "cloud";
   $: contexts = state?.contexts || [];
   $: activeContext =
@@ -194,6 +207,11 @@
       const result = await api.getResearchState(targetProjectId);
       if (targetProjectId !== projectId) return;
       state = result;
+      // Do not auto-display any previously-computed suggestion from the
+      // backend. The UI must only reveal suggestions after an explicit
+      // research run or when the user chooses to view them.
+      suggestionVisible = false;
+      revealedSuggestion = false;
       activeContextId =
         state.active_context_id || state.contexts?.[0]?.id || "";
       syncSelection();
@@ -371,6 +389,15 @@
             queueScroll();
           } else if (event.type === "done") {
             state = event.state;
+            // Show suggestion banner only when a real research run produced it
+            if (event.state?.target_board_id) {
+              suggestionVisible = true;
+              revealedSuggestion = false; // do not auto-reveal
+            }
+            // If backend applied the suggestion, update the workspace UI selection
+            if (event.applied_board_id) {
+              actions.setSelectedBoard(event.applied_board_id, false);
+            }
             activeContextId =
               event.context?.id || state.active_context_id || activeContextId;
             completed = true;
@@ -399,6 +426,35 @@
           : "The research agent could not respond.";
     } finally {
       loading = false;
+    }
+  }
+
+  function dismissSuggestion() {
+    // Remove the suggestion from the local state view. The backend state
+    // remains unchanged; dismiss is a UI-only action.
+    if (!state) return;
+    state = { ...state, target_board_id: null, target_board_label: null };
+    suggestionVisible = false;
+    revealedSuggestion = false;
+  }
+
+  async function applySuggestedBoard(boardId: string) {
+    if (!projectId || !boardId) return;
+    try {
+      // Persist the user's choice to the current project.
+      await actions.setSelectedBoard(boardId, true);
+      // Update local research state to reflect acceptance.
+      state = {
+        ...state,
+        target_board_id: boardId,
+        target_board_label: state?.target_board_label || boardId,
+      };
+      notice = `Applied ${state?.target_board_label || boardId} to the project.`;
+      suggestionVisible = false;
+      revealedSuggestion = false;
+      // Optionally notify backend that the suggestion was accepted (advance or handoff flows may handle this).
+    } catch (e) {
+      notice = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -459,6 +515,10 @@
             } else if (event.type === "done") {
               recordPhase3Activity(event.state?.verification_activity);
               notice = `Created ${event.artifacts.join(", ")}. Review the final plan below.`;
+              if (event.applied_board_id) {
+                // Update UI selection to reflect server-applied target.
+                actions.setSelectedBoard(event.applied_board_id, false);
+              }
               actions.refreshProjectFiles(projectId);
             }
           },
@@ -601,6 +661,39 @@
         <h1>{stageCopy[stage]?.label}</h1>
         <p>{stageCopy[stage]?.help}</p>
       </div>
+      {#if state?.target_board_id && suggestionVisible}
+        <div class="board-suggestion">
+          <div class="suggestion-left">
+            <strong>AI suggests:</strong>
+            {#if revealedSuggestion}
+              <span class="suggested-board"
+                >{state.target_board_label || state.target_board_id}</span
+              >
+            {:else}
+              <span class="suggested-board">(hidden)</span>
+            {/if}
+          </div>
+          <div class="suggestion-actions">
+            {#if !revealedSuggestion}
+              <button
+                class="apply-btn"
+                onclick={() => {
+                  revealedSuggestion = true;
+                }}>View suggestion</button
+              >
+            {:else}
+              <button
+                class="apply-btn"
+                onclick={() => applySuggestedBoard(state.target_board_id)}
+                >Apply to project</button
+              >
+              <button class="dismiss-btn" onclick={() => dismissSuggestion()}
+                >Dismiss</button
+              >
+            {/if}
+          </div>
+        </div>
+      {/if}
       <div class="stage-pill">
         Step {Math.max(
           1,
@@ -738,8 +831,8 @@
           <Sparkles size={26} />
           <h2>Okay, I’m your research agent.</h2>
           <p>
-            Your project is configured for <strong>{researchBoardLabel}</strong>.
-            Tell me what you want to build and we’ll research components,
+            Your project is configured for <strong>{researchBoardLabel}</strong
+            >. Tell me what you want to build and we’ll research components,
             boards, and configuration before moving into the project.
           </p>
         </div>
@@ -865,7 +958,9 @@
         <div class="review-processing" aria-live="polite" aria-busy="true">
           <span class="thinking-orbit"><i></i></span>
           <div>
-            <strong>{thinkingLabel || "Writing the final-review response"}</strong>
+            <strong
+              >{thinkingLabel || "Writing the final-review response"}</strong
+            >
             <small>Your request was sent and is being processed.</small>
           </div>
           <span class="thinking-dots"><i></i><i></i><i></i></span>

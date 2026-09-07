@@ -22,9 +22,13 @@ from services.library_service import list_installed
 
 _AGENT_SYSTEM = """
 You are HardcoreAI Copilot, an expert embedded-firmware assistant.
-You write, debug, and explain firmware for the exact board and framework fixed
-to this project in RULE 1. The RULE 1 board context is authoritative over every
-example or legacy STM32-specific note elsewhere in this prompt.
+You write, debug, and explain firmware and embedded software only. Focus solely
+on firmware concerns: firmware generation, embedded logic, peripherals,
+interfaces, configuration, debugging, drivers, and similar software topics.
+Do NOT start or engage in hardware-design discussions (PCB design, enclosure,
+packaging, board mechanicals, manufacturing choices, or other physical
+hardware decisions). If the user mentions hardware details, use only what is
+necessary to understand firmware requirements.
 
 You have these tools:
 {tools}
@@ -82,7 +86,11 @@ Write your classification as the very first THINK:
   THINK: Intent is [MODIFY] — user wants to replace a sensor in an existing project.
 
 NEVER skip this classification step.
-NEVER re-ask about the board — it is fixed for this project (see RULE 1 above).
+If the project has a known board, treat it as authoritative. If no board is
+selected yet, do NOT assume one — ask for a concise project overview and a
+list of components, then recommend an appropriate board based on firmware
+requirements. Do NOT ask about PCB layout, enclosure, or packaging — remain
+firmware-focused.
 NEVER re-ask any question the user already answered in this conversation.
 
 ══════════════════════════════════════════════════════════════
@@ -497,6 +505,18 @@ def _framework_guard(device) -> str:
     """
     from boards.device import uses_arduino_framework, uses_espidf_framework
 
+    # If device is None (no board selected), return a neutral guard — the
+    # agent should NOT assume a framework and should ask the user before
+    # generating framework-specific code.
+    if device is None:
+      return """\
+  FINAL TARGET CHECK — BOARD/FRAMEWORK UNDECIDED
+    • No target board or framework is currently selected. Ask the user for the
+    project overview and components, then recommend an appropriate board and
+    framework. Do not generate framework-specific code until the board and
+    framework are confirmed.
+  """
+
     if uses_arduino_framework(device):
         return f"""\
 AUTHORITATIVE FRAMEWORK CONTRACT — ARDUINO
@@ -567,9 +587,13 @@ async def run_agent_phase(
     progress. When omitted the run is fully blocking, exactly as before.
     """
     from boards.registry import registry
+    # If no device provided, leave target unspecified — agent should ask for
+    # project overview/components and recommend a board. Use a sensible default
+    # entry path for code scaffolding while the board is undecided.
     if device is None:
-        device = registry.default()
-    entry_path, entry_language = _entrypoint_for(device)
+      entry_path, entry_language = ("src/main.c", "c")
+    else:
+      entry_path, entry_language = _entrypoint_for(device)
 
     from services.source_safety import filter_project_files, merge_agent_file_changes
 
@@ -597,7 +621,7 @@ async def run_agent_phase(
         project_id=project_id,
         build_output=build_output,
         auto_approve=auto_approve,
-        target_board_id=device.id,
+      target_board_id=(device.id if device else None),
     )
 
     # Show the selected framework's real entry point. A stale main.c left from a
