@@ -663,33 +663,43 @@
       </div>
       {#if state?.target_board_id && suggestionVisible}
         <div class="board-suggestion">
-          <div class="suggestion-left">
-            <strong>AI suggests:</strong>
+          <div class="suggestion-icon">✦</div>
+
+          <div class="suggestion-content">
+            <span class="suggestion-label">AI suggests</span>
+
             {#if revealedSuggestion}
-              <span class="suggested-board"
-                >{state.target_board_label || state.target_board_id}</span
-              >
+              <span class="suggested-board">
+                {state.target_board_label || state.target_board_id}
+              </span>
             {:else}
-              <span class="suggested-board">(hidden)</span>
+              <span class="suggested-board hidden-suggestion">
+                Suggestion ready
+              </span>
             {/if}
           </div>
+
           <div class="suggestion-actions">
             {#if !revealedSuggestion}
               <button
                 class="apply-btn"
                 onclick={() => {
                   revealedSuggestion = true;
-                }}>View suggestion</button
+                }}
               >
+                View
+              </button>
             {:else}
               <button
                 class="apply-btn"
                 onclick={() => applySuggestedBoard(state.target_board_id)}
-                >Apply to project</button
               >
-              <button class="dismiss-btn" onclick={() => dismissSuggestion()}
-                >Dismiss</button
-              >
+                Apply
+              </button>
+
+              <button class="dismiss-btn" onclick={() => dismissSuggestion()}>
+                Dismiss
+              </button>
             {/if}
           </div>
         </div>
@@ -1009,6 +1019,80 @@
 </div>
 
 <style>
+  .board-suggestion {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-left: auto;
+    margin-right: 16px;
+    padding: 6px 7px 6px 10px;
+    min-height: 38px;
+
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+
+    box-sizing: border-box;
+  }
+
+  .suggestion-left {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .suggestion-left strong {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .suggested-board {
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .suggestion-actions {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .apply-btn,
+  .dismiss-btn {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .apply-btn {
+    border: 1px solid rgba(124, 58, 237, 0.5);
+    background: rgba(124, 58, 237, 0.14);
+    color: #c4b5fd;
+  }
+
+  .apply-btn:hover {
+    background: rgba(124, 58, 237, 0.24);
+    border-color: var(--accent-violet);
+  }
+
+  .dismiss-btn {
+    border: 1px solid var(--border-color);
+    background: transparent;
+    color: var(--text-muted);
+  }
+
+  .dismiss-btn:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+  }
   .research-view {
     height: 100%;
     min-height: 0;

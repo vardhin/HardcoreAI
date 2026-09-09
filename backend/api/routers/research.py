@@ -168,7 +168,15 @@ def _apply_research_target_board(
         current_board_id=project.board_id,
     )
     state["board_selection"] = decision
-    board_id = selected_target_board_id(selected) or project.board_id
+    board_id = (
+    selected_target_board_id(selected)
+    or (
+        decision.get("selected_board_id")
+        if decision.get("source") in {"explicit", "requirements"}
+        else None
+    )
+    or project.board_id
+)
     device = registry.get(board_id)
     if not device:
         return None
@@ -295,11 +303,12 @@ def get_research_state(project_id: str, user_id: str = Depends(get_current_user_
         state = load_research_state(project_id)
         # Ensure callers can still see the project configuration metadata.
         state.setdefault("board_selection", {})
-        state["board_selection"] = {
-            **(state.get("board_selection") or {}),
-            "selected_board_id": project.board_id,
-            "source": state.get("board_selection", {}).get("source", "project_configuration"),
-        }
+
+        if not state["board_selection"].get("selected_board_id"):
+            state["board_selection"] = {
+        **state["board_selection"],
+        "selected_board_id": project.board_id,
+        "source": "project_configuration",}
         out = normalize_research_state(state)
         # Hide advisory `target_board_id` when it's only the project default.
         if out.get("board_selection", {}).get("source") == "project_configuration":
